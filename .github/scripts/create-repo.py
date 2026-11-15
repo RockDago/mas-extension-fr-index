@@ -15,7 +15,14 @@ APPLICATION_ICON_320_REGEX = re.compile(
 )
 LANGUAGE_REGEX = re.compile(r"aniyomi-([^\.]+)")
 
-*_, ANDROID_BUILD_TOOLS = (Path(os.environ["ANDROID_HOME"]) / "build-tools").iterdir()
+build_tools_dir = Path(os.environ["ANDROID_HOME"]) / "build-tools"
+aapt_candidates = sorted(build_tools_dir.glob("*/aapt"), reverse=True) or sorted(build_tools_dir.glob("*/aapt.exe"), reverse=True)
+if aapt_candidates:
+    AAPT_PATH = aapt_candidates[0]
+else:
+    *_, fallback_dir = build_tools_dir.iterdir()
+    AAPT_PATH = fallback_dir / "aapt"
+
 REPO_DIR = Path("repo")
 REPO_APK_DIR = REPO_DIR / "apk"
 REPO_ICON_DIR = REPO_DIR / "icon"
@@ -28,14 +35,14 @@ with open("output.json", encoding="utf-8") as f:
 index_data = []
 index_min_data = []
 
-for apk in REPO_APK_DIR.iterdir():
+for apk in sorted(REPO_APK_DIR.glob("*.apk")):
     badging = subprocess.check_output(
         [
-            ANDROID_BUILD_TOOLS / "aapt",
+            str(AAPT_PATH),
             "dump",
             "--include-meta-data",
             "badging",
-            apk,
+            str(apk),
         ]
     ).decode()
 

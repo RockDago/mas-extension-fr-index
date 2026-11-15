@@ -2,12 +2,13 @@ ext {
     extName = 'French Anime'
     extClass = '.FrenchAnime'
     themePkg = 'datalifeengine'
-    overrideVersionCode = 9
+    overrideVersionCode = 11
 }
 
 apply from: "$rootDir/common.gradle"
 
 dependencies {
+    implementation(project(':lib:cloudflare-interceptor'))
     implementation(project(':lib:dood-extractor'))
     implementation(project(':lib:vido-extractor'))
     implementation(project(':lib:uqload-extractor'))
