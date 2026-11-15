@@ -203,16 +203,6 @@ class FrenchAnime : DataLifeEngine(
         }
     }
 
-    override suspend fun getVideoList(episode: SEpisode): List<Video> {
-        return getHosterList(episode).flatMap { hoster ->
-            try {
-                getVideoList(hoster)
-            } catch (_: Throwable) {
-                emptyList()
-            }
-        }
-    }
-
     override fun hosterListParse(response: Response): List<Hoster> = throw UnsupportedOperationException()
 
     companion object {

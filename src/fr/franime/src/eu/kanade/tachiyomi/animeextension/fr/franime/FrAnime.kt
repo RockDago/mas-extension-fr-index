@@ -26,6 +26,7 @@ import extensionsfr.utils.LazyMutable
 import kotlinx.serialization.json.Json
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import uy.kohesive.injekt.Injekt
@@ -278,16 +279,6 @@ class FrAnime : AnimeDomainSource() {
             extractor.videosFromUrl(playerUrl)
         } catch (_: Throwable) {
             emptyList()
-        }
-    }
-
-    override suspend fun getVideoList(episode: SEpisode): List<Video> {
-        return getHosterList(episode).flatMap { hoster ->
-            try {
-                getVideoList(hoster)
-            } catch (_: Throwable) {
-                emptyList()
-            }
         }
     }
 

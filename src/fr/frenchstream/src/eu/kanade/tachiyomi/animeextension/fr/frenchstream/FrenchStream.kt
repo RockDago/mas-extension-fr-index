@@ -253,28 +253,34 @@ class FrenchStream : AnimeDomainSource() {
                                 }
                             }
                         }
-                        if (vfUrl.isNotBlank()) vfUrls.add("$hosterName|$vfUrl")
+                        if (vfUrl.isNotBlank()) vfUrls.add("(VF) $hosterName|$vfUrl")
 
                         val vostfrUrl = pData.optString("vostfr")
-                        if (vostfrUrl.isNotBlank()) vostfrUrls.add("$hosterName|$vostfrUrl")
+                        if (vostfrUrl.isNotBlank()) vostfrUrls.add("(VOSTFR) $hosterName|$vostfrUrl")
                     }
 
-                    if (vfUrls.isNotEmpty()) {
+                    val allMovieUrls = mutableListOf<String>()
+                    val prefVoice = preferences.getString(PREF_VOICES_KEY, PREF_VOICES_DEFAULT) ?: PREF_VOICES_DEFAULT
+                    if (prefVoice == "vostfr") {
+                        allMovieUrls.addAll(vostfrUrls)
+                        allMovieUrls.addAll(vfUrls)
+                    } else {
+                        allMovieUrls.addAll(vfUrls)
+                        allMovieUrls.addAll(vostfrUrls)
+                    }
+
+                    if (allMovieUrls.isNotEmpty()) {
                         episodeList.add(
                             SEpisode.create().apply {
-                                name = "Film complet (VF)"
+                                name = "Film complet"
                                 episode_number = 1F
-                                url = vfUrls.joinToString(",")
-                            }
-                        )
-                    }
-
-                    if (vostfrUrls.isNotEmpty()) {
-                        episodeList.add(
-                            SEpisode.create().apply {
-                                name = "Film complet (VOSTFR)"
-                                episode_number = if (vfUrls.isEmpty()) 1F else 2F
-                                url = vostfrUrls.joinToString(",")
+                                scanlator = when {
+                                    vfUrls.isNotEmpty() && vostfrUrls.isNotEmpty() -> "VF & VOSTFR"
+                                    vfUrls.isNotEmpty() -> "VF"
+                                    vostfrUrls.isNotEmpty() -> "VOSTFR"
+                                    else -> null
+                                }
+                                url = allMovieUrls.joinToString(",")
                             }
                         )
                     }
@@ -294,54 +300,67 @@ class FrenchStream : AnimeDomainSource() {
                 val vfObj = json?.optJSONObject("vf")
                 val vostfrObj = json?.optJSONObject("vostfr")
 
-                val prefVoice = preferences.getString(PREF_VOICES_KEY, PREF_VOICES_DEFAULT) ?: PREF_VOICES_DEFAULT
+                if (vfObj != null || vostfrObj != null) {
+                    val allKeys = mutableSetOf<String>()
+                    vfObj?.keys()?.forEach { allKeys.add(it) }
+                    vostfrObj?.keys()?.forEach { allKeys.add(it) }
 
-                if (vfObj != null && (prefVoice == "vf" || prefVoice == "both")) {
-                    val sortedEpKeys = vfObj.keys().asSequence().sortedBy { it.toIntOrNull() ?: 0 }
+                    val sortedEpKeys = allKeys
+                        .filter { it.toIntOrNull() != null }
+                        .sortedBy { it.toIntOrNull() ?: 0 }
+
+                    val prefVoice = preferences.getString(PREF_VOICES_KEY, PREF_VOICES_DEFAULT) ?: PREF_VOICES_DEFAULT
+
                     for (epKey in sortedEpKeys) {
-                        val pData = vfObj.optJSONObject(epKey) ?: continue
-                        val urls = mutableListOf<String>()
-                        for (pKey in pData.keys()) {
-                            if (pKey == "premium") continue
-                            val u = pData.optString(pKey)
-                            if (u.isNotBlank()) {
-                                val hosterName = mapPlayerKeyToName(pKey)
-                                urls.add("$hosterName|$u")
-                            }
-                        }
-                        if (urls.isNotEmpty()) {
-                            val epNum = epKey.toFloatOrNull() ?: 0F
-                            episodeList.add(
-                                SEpisode.create().apply {
-                                    name = "Épisode $epKey (VF)"
-                                    episode_number = epNum
-                                    url = urls.joinToString(",")
+                        val vfUrls = mutableListOf<String>()
+                        val vostfrUrls = mutableListOf<String>()
+
+                        val vfData = vfObj?.optJSONObject(epKey)
+                        if (vfData != null) {
+                            for (pKey in vfData.keys()) {
+                                if (pKey == "premium") continue
+                                val u = vfData.optString(pKey)
+                                if (u.isNotBlank()) {
+                                    val hosterName = mapPlayerKeyToName(pKey)
+                                    vfUrls.add("(VF) $hosterName|$u")
                                 }
-                            )
-                        }
-                    }
-                }
-
-                if (vostfrObj != null && (prefVoice == "vostfr" || prefVoice == "both" || (episodeList.isEmpty() && prefVoice == "vf"))) {
-                    val sortedEpKeys = vostfrObj.keys().asSequence().sortedBy { it.toIntOrNull() ?: 0 }
-                    for (epKey in sortedEpKeys) {
-                        val pData = vostfrObj.optJSONObject(epKey) ?: continue
-                        val urls = mutableListOf<String>()
-                        for (pKey in pData.keys()) {
-                            if (pKey == "premium") continue
-                            val u = pData.optString(pKey)
-                            if (u.isNotBlank()) {
-                                val hosterName = mapPlayerKeyToName(pKey)
-                                urls.add("$hosterName|$u")
                             }
                         }
-                        if (urls.isNotEmpty()) {
+
+                        val vostfrData = vostfrObj?.optJSONObject(epKey)
+                        if (vostfrData != null) {
+                            for (pKey in vostfrData.keys()) {
+                                if (pKey == "premium") continue
+                                val u = vostfrData.optString(pKey)
+                                if (u.isNotBlank()) {
+                                    val hosterName = mapPlayerKeyToName(pKey)
+                                    vostfrUrls.add("(VOSTFR) $hosterName|$u")
+                                }
+                            }
+                        }
+
+                        val epUrls = mutableListOf<String>()
+                        if (prefVoice == "vostfr") {
+                            epUrls.addAll(vostfrUrls)
+                            epUrls.addAll(vfUrls)
+                        } else {
+                            epUrls.addAll(vfUrls)
+                            epUrls.addAll(vostfrUrls)
+                        }
+
+                        if (epUrls.isNotEmpty()) {
                             val epNum = epKey.toFloatOrNull() ?: 0F
                             episodeList.add(
                                 SEpisode.create().apply {
-                                    name = "Épisode $epKey (VOSTFR)"
+                                    name = "Épisode $epKey"
                                     episode_number = epNum
-                                    url = urls.joinToString(",")
+                                    scanlator = when {
+                                        vfUrls.isNotEmpty() && vostfrUrls.isNotEmpty() -> "VF & VOSTFR"
+                                        vfUrls.isNotEmpty() -> "VF"
+                                        vostfrUrls.isNotEmpty() -> "VOSTFR"
+                                        else -> null
+                                    }
+                                    url = epUrls.joinToString(",")
                                 }
                             )
                         }
@@ -372,7 +391,7 @@ class FrenchStream : AnimeDomainSource() {
             }
         }
 
-        return episodeList.reversed()
+        return episodeList.sortedBy { it.episode_number }
     }
 
     // ============================ Video Links =============================
@@ -390,7 +409,7 @@ class FrenchStream : AnimeDomainSource() {
             episode.url.split(",").filter { it.isNotBlank() }
         }
 
-        return entries.mapNotNull { entry ->
+        val hosters = entries.mapNotNull { entry ->
             val (name, url) = if (entry.contains("|")) {
                 val parts = entry.split("|", limit = 2)
                 parts[0] to parts[1]
@@ -403,6 +422,13 @@ class FrenchStream : AnimeDomainSource() {
                     hosterName = name,
                 )
             } else null
+        }
+
+        val prefVoice = preferences.getString(PREF_VOICES_KEY, PREF_VOICES_DEFAULT) ?: PREF_VOICES_DEFAULT
+        return when (prefVoice) {
+            "vostfr" -> hosters.sortedByDescending { it.hosterName.contains("VOSTFR") }
+            "vf" -> hosters.sortedByDescending { it.hosterName.contains("VF") }
+            else -> hosters
         }
     }
 
@@ -418,12 +444,6 @@ class FrenchStream : AnimeDomainSource() {
             } ?: emptyList()
         } catch (_: Throwable) {
             emptyList()
-        }
-    }
-
-    override suspend fun getVideoList(episode: SEpisode): List<Video> {
-        return getHosterList(episode).flatMap { hoster ->
-            getVideoList(hoster)
         }
     }
 

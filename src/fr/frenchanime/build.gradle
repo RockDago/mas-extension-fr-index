@@ -2,7 +2,7 @@ ext {
     extName = 'French Anime'
     extClass = '.FrenchAnime'
     themePkg = 'datalifeengine'
-    overrideVersionCode = 12
+    overrideVersionCode = 13
 }
 
 apply from: "$rootDir/common.gradle"

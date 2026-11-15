@@ -262,8 +262,9 @@ class DessinAnime : AnimeDomainSource() {
         if (path.contains("/movie/")) {
             episodeList.add(
                 SEpisode.create().apply {
-                    name = "Film complet (VF)"
+                    name = "Film complet"
                     episode_number = 1F
+                    scanlator = "VF"
                     url = path
                 }
             )
@@ -288,15 +289,16 @@ class DessinAnime : AnimeDomainSource() {
                 ?: "S${seasonNum.toString().padStart(2, '0')}E${epNum.toString().padStart(2, '0')}"
 
             val epName = if (!titleText.isNullOrBlank() && !titleText.startsWith("Épisode", ignoreCase = true)) {
-                "$badgeText - $titleText (VF)"
+                "$badgeText - $titleText"
             } else {
-                "$badgeText (VF)"
+                badgeText
             }
 
             episodeList.add(
                 SEpisode.create().apply {
                     name = epName
                     episode_number = seasonNum * 1000F + epNum
+                    scanlator = "VF"
                     url = cleanHref
                 }
             )
@@ -321,12 +323,13 @@ class DessinAnime : AnimeDomainSource() {
                                 val epNum = epObj.optInt("episodeNumber", e + 1)
                                 val epTitle = epObj.optString("title")
                                 val slug = series.optString("slug", path.trim('/').substringAfterLast('/'))
-                                val epName = if (epTitle.isNotBlank()) "S${sNum.toString().padStart(2, '0')}E${epNum.toString().padStart(2, '0')} - $epTitle (VF)"
-                                else "S${sNum.toString().padStart(2, '0')}E${epNum.toString().padStart(2, '0')} (VF)"
+                                val epName = if (epTitle.isNotBlank()) "S${sNum.toString().padStart(2, '0')}E${epNum.toString().padStart(2, '0')} - $epTitle"
+                                else "S${sNum.toString().padStart(2, '0')}E${epNum.toString().padStart(2, '0')}"
                                 episodeList.add(
                                     SEpisode.create().apply {
                                         name = epName
                                         episode_number = sNum * 1000F + epNum
+                                        scanlator = "VF"
                                         url = "/tv/$slug/$sNum/$epNum"
                                     }
                                 )
@@ -341,14 +344,15 @@ class DessinAnime : AnimeDomainSource() {
         if (episodeList.isEmpty()) {
             episodeList.add(
                 SEpisode.create().apply {
-                    name = "Épisode complet (VF)"
+                    name = "Épisode complet"
                     episode_number = 1F
+                    scanlator = "VF"
                     url = path
                 }
             )
         }
 
-        return episodeList.reversed()
+        return episodeList.sortedBy { it.episode_number }
     }
 
     // ============================ Video Links =============================
@@ -409,16 +413,6 @@ class DessinAnime : AnimeDomainSource() {
             } ?: emptyList()
         } catch (_: Throwable) {
             emptyList()
-        }
-    }
-
-    override suspend fun getVideoList(episode: SEpisode): List<Video> {
-        return getHosterList(episode).flatMap { hoster ->
-            try {
-                getVideoList(hoster)
-            } catch (_: Throwable) {
-                emptyList()
-            }
         }
     }
 
