@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Aniyomi: Anime-Sama",
+    "pkg": "eu.kanade.tachiyomi.animeextension.fr.animesama",
+    "apk": "aniyomi-fr.animesama-v16.20.apk",
+    "lang": "fr",
+    "code": 20,
+    "version": "16.20",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "sources": [
+      {
+        "name": "Anime-Sama",
+        "lang": "fr",
+        "id": "6170936930338275444",
+        "baseUrl": "https://anime-sama.to",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Aniyomi: FrAnime",
+    "pkg": "eu.kanade.tachiyomi.animeextension.fr.franime",
+    "apk": "aniyomi-fr.franime-v16.16.apk",
+    "lang": "fr",
+    "code": 16,
+    "version": "16.16",
+    "nsfw": 1,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "sources": [
+      {
+        "name": "FRAnime",
+        "lang": "fr",
+        "id": "3074980924810171824",
+        "baseUrl": "",
+        "versionId": 1
+      }
+    ]
+  },
+  {
+    "name": "Aniyomi: French Anime",
+    "pkg": "eu.kanade.tachiyomi.animeextension.fr.frenchanime",
+    "apk": "aniyomi-fr.frenchanime-v16.11.apk",
+    "lang": "fr",
+    "code": 11,
+    "version": "16.11",
+    "nsfw": 0,
+    "hasReadme": 0,
+    "hasChangelog": 0,
+    "sources": [
+      {
+        "name": "French Anime",
+        "lang": "fr",
+        "id": "8142032927870763721",
+        "baseUrl": "",
+        "versionId": 1
+      }
+    ]
+  }
+]
