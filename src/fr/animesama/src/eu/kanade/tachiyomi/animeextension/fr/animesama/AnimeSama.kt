@@ -220,13 +220,13 @@ class AnimeSama : AnimeDomainSource() {
                     val allEpisodes = mutableListOf<SEpisode>()
                     var globalEpIndex = 1
                     for ((seasonName, seasonStem) in seasons) {
-                        val cleanStem = if (VOICES_VALUES.any { seasonStem.endsWith("/$it") }) {
+                        val cleanStem = if (ALL_VOICE_TYPES.any { seasonStem.endsWith("/$it") }) {
                             seasonStem.substringBeforeLast('/')
                         } else {
                             seasonStem
                         }
                         val seasonSubPath = "/catalogue/${parts.last()}/$cleanStem"
-                        val players = VOICES_VALUES.toList().parallelMap { voice ->
+                        val players = ALL_VOICE_TYPES.toList().parallelMap { voice ->
                             fetchPlayers("$baseUrl$seasonSubPath/$voice", "$seasonSubPath/$voice")
                         }
                         val seasonEpisodes = playersToEpisodes(
@@ -244,13 +244,13 @@ class AnimeSama : AnimeDomainSource() {
 
         // Single season or specific season sub-path:
         val seasonPath = anime.url.removeSuffix("/")
-        val seasonUrl = if (VOICES_VALUES.any { seasonPath.endsWith("/$it") }) {
+        val seasonUrl = if (ALL_VOICE_TYPES.any { seasonPath.endsWith("/$it") }) {
             seasonPath.substringBeforeLast('/')
         } else {
             seasonPath
         }
 
-        val players = VOICES_VALUES.toList().parallelMap { voice ->
+        val players = ALL_VOICE_TYPES.toList().parallelMap { voice ->
             fetchPlayers("$baseUrl$seasonUrl/$voice", "$seasonUrl/$voice")
         }
         val episodes = playersToEpisodes(players)
@@ -271,10 +271,45 @@ class AnimeSama : AnimeDomainSource() {
         VoeExtractor(client, headers),
     )
 
+    override fun isPreferred(hoster: Hoster, video: Video): Boolean {
+        val prefQuality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT) ?: PREF_QUALITY_DEFAULT
+        val matchesQuality = video.quality.contains(prefQuality)
+        val isVf = hoster.hosterName.contains("(VF)") || video.quality.contains("(VF)")
+        return if (isVf) matchesQuality else false
+    }
+
     override suspend fun getHosterList(episode: SEpisode): List<Hoster> {
         val playerUrls = json.decodeFromString<List<List<String>>>(episode.url)
-        return playerUrls.flatMapIndexed { i, playerList ->
-            val prefix = "(${VOICES_VALUES[i].uppercase()}) "
+        val prefVoice = preferences.getString(PREF_VOICES_KEY, PREF_VOICES_DEFAULT) ?: PREF_VOICES_DEFAULT
+
+        val vfPlayers = playerUrls.getOrNull(0) ?: emptyList()
+        val vostfrPlayers = playerUrls.getOrNull(1) ?: emptyList()
+
+        val selectedVoicesWithPlayers: List<Pair<String, List<String>>> = when (prefVoice) {
+            "vostfr" -> {
+                if (vostfrPlayers.isNotEmpty()) {
+                    listOf("vostfr" to vostfrPlayers, "vf" to vfPlayers)
+                } else {
+                    listOf("vf" to vfPlayers)
+                }
+            }
+            "both_vf_first" -> {
+                listOf("vf" to vfPlayers, "vostfr" to vostfrPlayers)
+            }
+            "vf_only" -> {
+                listOf("vf" to vfPlayers)
+            }
+            else -> { // "vf" : Toujours FR / VF si disponible, sinon VOSTFR
+                if (vfPlayers.isNotEmpty()) {
+                    listOf("vf" to vfPlayers)
+                } else {
+                    listOf("vostfr" to vostfrPlayers)
+                }
+            }
+        }
+
+        val hosters = selectedVoicesWithPlayers.flatMap { (voice, playerList) ->
+            val prefix = "(${voice.uppercase()}) "
             playerList.parallelMap { player ->
                 try {
                     resolvePlayer(player, prefix)
@@ -282,7 +317,19 @@ class AnimeSama : AnimeDomainSource() {
                     null
                 }
             }.filterNotNull()
-        }.also { Log.d(name, it.joinToString { "${it.hosterName} (${it.hosterUrl})" }) }
+        }
+
+        if (hosters.isEmpty() && prefVoice == "vf" && vostfrPlayers.isNotEmpty()) {
+            return vostfrPlayers.parallelMap { player ->
+                try {
+                    resolvePlayer(player, "(VOSTFR) ")
+                } catch (_: Throwable) {
+                    null
+                }
+            }.filterNotNull()
+        }
+
+        return hosters.also { Log.d(name, it.joinToString { "${it.hosterName} (${it.hosterUrl})" }) }
     }
 
     override fun hosterListParse(response: Response) = throw UnsupportedOperationException()
@@ -295,6 +342,9 @@ class AnimeSama : AnimeDomainSource() {
         List(list.fold(0) { acc, it -> maxOf(acc, it.size) }) { i ->
             val episodeNumber = i + 1
             val players = list.map { it.getOrElse(i) { emptyList() } }
+            val hasVf = players.getOrNull(0)?.isNotEmpty() == true
+            val hasVostfr = players.getOrNull(1)?.isNotEmpty() == true
+
             SEpisode.create().apply {
                 name = if (seasonName != null) {
                     "$seasonName Épisode $episodeNumber"
@@ -303,9 +353,11 @@ class AnimeSama : AnimeDomainSource() {
                 }
                 url = json.encodeToString(players)
                 episode_number = (startIndex + i).toFloat()
-                scanlator = players.mapIndexedNotNull { voiceIdx, voicePlayers ->
-                    if (voicePlayers.isNotEmpty()) VOICES_VALUES[voiceIdx] else null
-                }.joinToString().uppercase()
+                scanlator = when {
+                    hasVf -> "VF"
+                    hasVostfr -> "VOSTFR"
+                    else -> ""
+                }
             }
         }
 
@@ -546,21 +598,25 @@ class AnimeSama : AnimeDomainSource() {
         private const val DEFAULT_DOMAIN = "https://anime-sama.to"
 
         private val VOICES = arrayOf(
-            "Préférer VOSTFR",
-            "Préférer VF",
-            "Préférer VASTFR",
+            "Toujours VF si disponible (sinon VOSTFR)",
+            "VF et VOSTFR (VF en premier)",
+            "VOSTFR uniquement",
+            "VF uniquement",
         )
 
         private val VOICES_VALUES = arrayOf(
-            "vostfr",
             "vf",
-            "va",
+            "both_vf_first",
+            "vostfr",
+            "vf_only",
         )
 
         private const val PREF_VOICES_KEY = "voices_preference"
-        private const val PREF_VOICES_DEFAULT = "vostfr"
+        private const val PREF_VOICES_DEFAULT = "vf"
 
         private const val PREF_QUALITY_KEY = "preferred_quality"
         private const val PREF_QUALITY_DEFAULT = "1080"
+
+        private val ALL_VOICE_TYPES = arrayOf("vf", "vostfr")
     }
 }
