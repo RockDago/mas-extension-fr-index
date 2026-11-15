@@ -384,11 +384,7 @@ class DessinAnime : AnimeDomainSource() {
         }
     }
 
-    override suspend fun getVideoList(episode: SEpisode): List<Video> {
-        return getHosterList(episode).flatMap { hoster ->
-            getVideoList(hoster)
-        }
-    }
+    override fun hosterListParse(response: Response): List<Hoster> = throw UnsupportedOperationException()
 
     private fun resolveRedirectIfNeeded(url: String): String {
         if (!url.contains("kokoflix.lol") && !url.contains("trakx.lol")) {

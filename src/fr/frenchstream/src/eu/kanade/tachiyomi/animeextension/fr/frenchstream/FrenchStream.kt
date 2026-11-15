@@ -71,7 +71,7 @@ class FrenchStream : AnimeDomainSource() {
         override val supportedUrls = listOf("dood.to", "dood.so", "dood.la", "dood.ws", "doodstream.com", "doods.pro", "ds2play.com", "d0o0d.com", "do0od.com")
         private val extractor by lazy { DoodExtractor(client) }
         override fun videosFromHoster(hoster: Hoster): List<Video> {
-            return extractor.videosFromUrl(hoster.hosterUrl, hoster.hosterName)
+            return extractor.videoFromUrl(hoster.hosterUrl, hoster.hosterName)?.let { listOf(it) } ?: emptyList()
         }
     }
 
@@ -379,11 +379,7 @@ class FrenchStream : AnimeDomainSource() {
         }
     }
 
-    override suspend fun getVideoList(episode: SEpisode): List<Video> {
-        return getHosterList(episode).flatMap { hoster ->
-            getVideoList(hoster)
-        }
-    }
+    override fun hosterListParse(response: Response): List<Hoster> = throw UnsupportedOperationException()
 
     private fun resolveRedirectIfNeeded(url: String): String {
         if (!url.contains("kokoflix.lol") && !url.contains("trakx.lol")) {
