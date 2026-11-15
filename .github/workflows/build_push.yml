@@ -21,8 +21,8 @@ permissions:
   contents: write
 
 env:
-  BOT_EMAIL: "${{ vars.BOT_EMAIL }}"
-  BOT_NAME: "${{ vars.BOT_NAME }}"
+  BOT_EMAIL: "${{ vars.BOT_EMAIL || 'github-actions[bot]@users.noreply.github.com' }}"
+  BOT_NAME: "${{ vars.BOT_NAME || 'github-actions[bot]' }}"
 
 jobs:
   prepare:
