@@ -404,7 +404,12 @@ class DessinAnime : AnimeDomainSource() {
     override suspend fun getVideoList(hoster: Hoster): List<Video> {
         return try {
             val resolvedUrl = resolveRedirectIfNeeded(hoster.hosterUrl)
-            val resolvedHoster = hoster.copy(hosterUrl = resolvedUrl)
+            val resolvedHoster = Hoster(
+                hosterUrl = resolvedUrl,
+                hosterName = hoster.hosterName,
+                internalData = hoster.internalData,
+                lazy = hoster.lazy,
+            )
             val extractor = extractorList.firstOrNull {
                 it.name.equals(hoster.hosterName, ignoreCase = true) || it.supportsUrl(resolvedUrl) || it.supportsUrl(hoster.hosterUrl)
             }
