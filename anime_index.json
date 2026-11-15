@@ -2,10 +2,12 @@
   {
     "name": "Aniyomi: Anime-Sama",
     "pkg": "eu.kanade.tachiyomi.animeextension.fr.animesama",
-    "apk": "aniyomi-fr.animesama-v16.20.apk",
+    "apk": "aniyomi-fr.animesama-v16.24.apk",
+    "apkUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/apk/aniyomi-fr.animesama-v16.24.apk",
+    "iconUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/icon/eu.kanade.tachiyomi.animeextension.fr.animesama.png",
     "lang": "fr",
-    "code": 20,
-    "version": "16.20",
+    "code": 24,
+    "version": "16.24",
     "nsfw": 0,
     "hasReadme": 0,
     "hasChangelog": 0,
@@ -17,14 +19,14 @@
         "baseUrl": "https://anime-sama.to",
         "versionId": 1
       }
-    ],
-    "apkUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/apk/aniyomi-fr.animesama-v16.20.apk",
-    "iconUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/icon/eu.kanade.tachiyomi.animeextension.fr.animesama.png"
+    ]
   },
   {
     "name": "Aniyomi: FrAnime",
     "pkg": "eu.kanade.tachiyomi.animeextension.fr.franime",
     "apk": "aniyomi-fr.franime-v16.16.apk",
+    "apkUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/apk/aniyomi-fr.franime-v16.16.apk",
+    "iconUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/icon/eu.kanade.tachiyomi.animeextension.fr.franime.png",
     "lang": "fr",
     "code": 16,
     "version": "16.16",
@@ -39,17 +41,17 @@
         "baseUrl": "",
         "versionId": 1
       }
-    ],
-    "apkUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/apk/aniyomi-fr.franime-v16.16.apk",
-    "iconUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/icon/eu.kanade.tachiyomi.animeextension.fr.franime.png"
+    ]
   },
   {
     "name": "Aniyomi: French Anime",
     "pkg": "eu.kanade.tachiyomi.animeextension.fr.frenchanime",
-    "apk": "aniyomi-fr.frenchanime-v16.11.apk",
+    "apk": "aniyomi-fr.frenchanime-v16.12.apk",
+    "apkUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/apk/aniyomi-fr.frenchanime-v16.12.apk",
+    "iconUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/icon/eu.kanade.tachiyomi.animeextension.fr.frenchanime.png",
     "lang": "fr",
-    "code": 11,
-    "version": "16.11",
+    "code": 12,
+    "version": "16.12",
     "nsfw": 0,
     "hasReadme": 0,
     "hasChangelog": 0,
@@ -61,8 +63,6 @@
         "baseUrl": "",
         "versionId": 1
       }
-    ],
-    "apkUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/apk/aniyomi-fr.frenchanime-v16.11.apk",
-    "iconUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/icon/eu.kanade.tachiyomi.animeextension.fr.frenchanime.png"
+    ]
   }
 ]
