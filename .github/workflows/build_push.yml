@@ -46,7 +46,7 @@ jobs:
       - name: Bump extensions that uses a modified lib
         if: steps.modified-libs.outputs.any_changed == 'true'
         run: |
-          ./.github/scripts/bump-versions.py ${{ steps.modified-libs.outputs.all_changed_files }}
+          python ./.github/scripts/bump-versions.py ${{ steps.modified-libs.outputs.all_changed_files }}
 
       - name: Validate Gradle Wrapper
         uses: gradle/wrapper-validation-action@v2
@@ -181,4 +181,4 @@ jobs:
       - name: Deploy repo
         run: |
           cd repo
-          ../master/.github/scripts/commit-repo.sh
+          bash ../master/.github/scripts/commit-repo.sh
