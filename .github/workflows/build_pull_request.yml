@@ -1,0 +1,59 @@
+---
+name: PR build check
+
+on:
+  pull_request:
+    paths:
+      - '**'
+      - '!**.md'
+      - '!.github/**'
+      - '.github/workflows/build_pull_request.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    name: Prepare job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/wrapper-validation-action@v2
+
+  build_individual:
+    name: Build individual modules
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+
+      - name: Set up aapt2 (ARM)
+        if: runner.arch == 'ARM64'
+        run: |
+          wget https://codeberg.org/hollow/android-sdk-tools/releases/download/v34.0.3/android-sdk-tools-static-arm.zip
+          unzip android-sdk-tools-static-arm.zip
+          echo ARM_AAPT=-Pandroid.aapt2FromMavenOverride=$GITHUB_WORKSPACE/build-tools/aapt2 >> $GITHUB_ENV
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-read-only: true
+
+      - name: Build extensions
+        run: ./gradlew $ARM_AAPT -p src assembleDebug

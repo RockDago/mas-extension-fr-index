@@ -1,0 +1,184 @@
+---
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - '**'
+      - '!**.md'
+      - '!.github/**'
+      - '.github/scripts/**'
+      - '.github/workflows/build_push.yml'
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  BOT_EMAIL: "${{ vars.BOT_EMAIL }}"
+  BOT_NAME: "${{ vars.BOT_NAME }}"
+
+jobs:
+  prepare:
+    name: Prepare job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Find lib changes
+        id: modified-libs
+        uses: tj-actions/changed-files@v42
+        with:
+          files: lib/
+          files_ignore: lib/**.md
+          files_separator: " "
+          safe_output: false
+
+      - name: Bump extensions that uses a modified lib
+        if: steps.modified-libs.outputs.any_changed == 'true'
+        run: |
+          ./.github/scripts/bump-versions.py ${{ steps.modified-libs.outputs.all_changed_files }}
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/wrapper-validation-action@v2
+
+  build_individual:
+    name: Build individual modules
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+
+      - name: Set up aapt2 (ARM)
+        if: runner.arch == 'ARM64'
+        run: |
+          wget https://codeberg.org/hollow/android-sdk-tools/releases/download/v34.0.3/android-sdk-tools-static-arm.zip
+          unzip android-sdk-tools-static-arm.zip
+          echo ARM_AAPT=-Pandroid.aapt2FromMavenOverride=$GITHUB_WORKSPACE/build-tools/aapt2 >> $GITHUB_ENV
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Prepare signing key
+        run: |
+          if [ -n "${{ secrets.SIGNING_KEY }}" ]; then
+            echo "${{ secrets.SIGNING_KEY }}" | base64 -d > signingkey.jks
+          else
+            echo "No SIGNING_KEY secret found, generating temporary keystore..."
+            keytool -genkey -v -keystore signingkey.jks -alias anyomi -keyalg RSA -keysize 2048 -validity 10000 -storepass password -keypass password -dname "CN=Aniyomi, OU=Aniyomi, O=Aniyomi, L=Unknown, S=Unknown, C=FR"
+          fi
+
+      - name: Build extensions
+        env:
+          ALIAS: ${{ secrets.ALIAS || 'anyomi' }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || 'password' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'password' }}
+        run: ./gradlew $ARM_AAPT -p src assembleRelease
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: "individual-apks"
+          path: "**/*.apk"
+          retention-days: 1
+
+      - name: Clean up CI files
+        run: rm -f signingkey.jks
+
+  publish_repo:
+    name: Publish repo
+    needs: build_individual
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup rsync
+        run: |
+          sudo apt-get update && sudo apt install rsync -y
+
+      - name: Download APK artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: "individual-apks"
+          path: ~/apk-artifacts
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+
+      - name: Set up build-tools (ARM)
+        if: runner.arch == 'ARM64'
+        run: |
+          wget https://codeberg.org/hollow/android-sdk-tools/releases/download/v34.0.3/android-sdk-tools-static-arm.zip
+          mkdir -p $HOME/.android/sdk/build-tools/
+          unzip android-sdk-tools-static-arm.zip -d $HOME/.android/sdk/build-tools/
+          mv $HOME/.android/sdk/build-tools/build-tools $HOME/.android/sdk/build-tools/34.0.0
+          echo 'ANDROID_DATA=.' >> $GITHUB_ENV 
+
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          path: master
+
+      - name: Create repo artifacts
+        run: |
+          cd master
+          python ./.github/scripts/move-apks.py
+          INSPECTOR_LINK="$(curl -s "https://api.github.com/repos/aniyomiorg/aniyomi-extensions-inspector/releases/latest" | jq -r '.assets[0].browser_download_url')"
+          curl -L "$INSPECTOR_LINK" -o ./Inspector.jar
+          java -jar ./Inspector.jar "repo/apk" "output.json" "tmp"
+          python ./.github/scripts/create-repo.py
+
+      - name: Checkout repo branch
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: repo
+          path: repo
+          fetch-depth: 2147483647
+
+      - name: Ensure repo branch directory exists
+        run: |
+          if [ ! -d "repo/.git" ]; then
+            echo "Branch repo not found or checkout failed, creating local repo branch..."
+            mkdir -p repo
+            cd repo
+            git init -b repo
+            git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+            git fetch origin repo || true
+            git checkout repo || git checkout -b repo
+          fi
+
+      - name: Deploy repo
+        run: |
+          cd repo
+          ../master/.github/scripts/commit-repo.sh
