@@ -5,7 +5,7 @@ import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.lib.playlistutils.PlaylistUtils
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.util.asJsoup
+import org.jsoup.Jsoup
 import extensionsfr.utils.Extractor
 import okhttp3.Headers
 import okhttp3.OkHttpClient
@@ -37,7 +37,7 @@ class UqloadExtractor(private val client: OkHttpClient): Extractor() {
             return playlistUtils.extractFromHls(m3u8Url, referer = "https://uqload.vc/")
         }
 
-        val doc = page.asJsoup()
+        val doc = Jsoup.parse(page)
         val script = doc.selectFirst("script:containsData(sources:)")?.data()
             ?: return emptyList()
 
