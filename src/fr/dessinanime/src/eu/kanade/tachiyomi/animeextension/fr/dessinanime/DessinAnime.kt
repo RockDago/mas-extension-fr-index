@@ -62,7 +62,7 @@ class DessinAnime : AnimeDomainSource() {
 
     private class FilemoonWrapper(private val client: OkHttpClient) : Extractor() {
         override val name = "Filemoon"
-        override val supportedUrls = listOf("filemoon.sx", "filemoon.to", "filemoon.nl", "mxzhxco8dft.com", "kokoflix.lol")
+        override val supportedUrls = listOf("filemoon.sx", "filemoon.to", "filemoon.nl", "mxzhxco8dft.com")
         private val extractor by lazy { FilemoonExtractor(client) }
         override fun videosFromHoster(hoster: Hoster): List<Video> {
             return extractor.videosFromUrl(hoster.hosterUrl, "${hoster.hosterName} - ")
@@ -389,13 +389,56 @@ class DessinAnime : AnimeDomainSource() {
         }
 
         return playerUrls.distinct().mapNotNull { rawUrl ->
-            val resolvedUrl = resolveRedirectIfNeeded(rawUrl)
-            val extractor = extractorList.firstOrNull { it.supportsUrl(resolvedUrl) }
-            extractor?.hosterFromUrl(resolvedUrl)
+            val name = guessHosterName(rawUrl)
+            Hoster(
+                hosterUrl = rawUrl,
+                hosterName = name,
+            )
+        }
+    }
+
+    override suspend fun getVideoList(hoster: Hoster): List<Video> {
+        return try {
+            val resolvedUrl = resolveRedirectIfNeeded(hoster.hosterUrl)
+            val resolvedHoster = hoster.copy(hosterUrl = resolvedUrl)
+            val extractor = extractorList.firstOrNull {
+                it.name.equals(hoster.hosterName, ignoreCase = true) || it.supportsUrl(resolvedUrl) || it.supportsUrl(hoster.hosterUrl)
+            }
+            extractor?.videosFromHoster(resolvedHoster)?.map {
+                it.copy(preferred = isPreferred(hoster, it))
+            } ?: emptyList()
+        } catch (_: Throwable) {
+            emptyList()
+        }
+    }
+
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
+        return getHosterList(episode).flatMap { hoster ->
+            try {
+                getVideoList(hoster)
+            } catch (_: Throwable) {
+                emptyList()
+            }
         }
     }
 
     override fun hosterListParse(response: Response): List<Hoster> = throw UnsupportedOperationException()
+
+    private fun guessHosterName(url: String): String {
+        val lower = url.lowercase()
+        return when {
+            "vidzy" in lower -> "Vidzy"
+            "uqload" in lower -> "Uqload"
+            "voe" in lower || "osaka_go" in lower || "susanexpectcare" in lower -> "VOE"
+            "filemoon" in lower || "grandline_go" in lower || "mxzhxco" in lower -> "Filemoon"
+            "dood" in lower || "tokyo_go" in lower || "playmogo" in lower -> "Doodstream"
+            "streamwish" in lower || "wishembed" in lower || "mwish" in lower || "strwish" in lower -> "StreamWish"
+            "vidmoly" in lower -> "VidMoly"
+            "sibnet" in lower -> "Sibnet"
+            "sendvid" in lower -> "Sendvid"
+            else -> extractorList.firstOrNull { it.supportsUrl(url) }?.name ?: "Lecteur"
+        }
+    }
 
     private fun resolveRedirectIfNeeded(url: String): String {
         if (!url.contains("kokoflix.lol") && !url.contains("trakx.lol")) {

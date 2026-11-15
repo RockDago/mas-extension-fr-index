@@ -5,7 +5,10 @@ import eu.kanade.tachiyomi.animesource.model.FetchType
 import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
+import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.lib.cloudflareinterceptor.CloudflareInterceptor
+import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
+import eu.kanade.tachiyomi.lib.sibnetextractor.SibnetExtractor
 import eu.kanade.tachiyomi.lib.upstreamextractor.UpstreamExtractor
 import eu.kanade.tachiyomi.lib.uqloadextractor.UqloadExtractor
 import eu.kanade.tachiyomi.lib.vidmolyextractor.VidMolyExtractor
@@ -16,6 +19,7 @@ import eu.kanade.tachiyomi.util.asJsoup
 import extensionsfr.utils.DebugExtractor
 import extensionsfr.utils.Extractor
 import extensionsfr.utils.LazyMutable
+import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -35,6 +39,10 @@ class FrenchAnime : DataLifeEngine(
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
+
+    override fun headersBuilder(): Headers.Builder = super.headersBuilder()
+        .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .add("Referer", "$baseUrl/")
 
     override val categories = arrayOf(
         Pair("<Sélectionner>", ""),
@@ -156,11 +164,22 @@ class FrenchAnime : DataLifeEngine(
 
     // ============================== Hosters ==============================
 
+    private class DoodWrapper(private val client: OkHttpClient) : Extractor() {
+        override val name = "Doodstream"
+        override val supportedUrls = listOf("dood.to", "dood.so", "dood.la", "dood.ws", "doodstream.com", "doods.pro", "ds2play.com", "d0o0d.com", "do0od.com", "playmogo.com")
+        private val extractor by lazy { DoodExtractor(client) }
+        override fun videosFromHoster(hoster: Hoster): List<Video> {
+            return extractor.videoFromUrl(hoster.hosterUrl, hoster.hosterName)?.let { listOf(it) } ?: emptyList()
+        }
+    }
+
     override val extractorList: List<Extractor> = listOf(
         VidMolyExtractor(client),
         UqloadExtractor(client),
         UpstreamExtractor(client),
         VoeExtractor(client, headers),
+        SibnetExtractor(client),
+        DoodWrapper(client),
     )
 
     override suspend fun getHosterList(episode: SEpisode): List<Hoster> {
@@ -181,6 +200,16 @@ class FrenchAnime : DataLifeEngine(
             val extractor = extractorList.firstOrNull { it.supportsUrl(url) }
             if (extractor != null) extractor.hosterFromUrl(url)
             else DebugExtractor(BuildConfig.DEBUG).hosterFromUrl(url)
+        }
+    }
+
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
+        return getHosterList(episode).flatMap { hoster ->
+            try {
+                getVideoList(hoster)
+            } catch (_: Throwable) {
+                emptyList()
+            }
         }
     }
 

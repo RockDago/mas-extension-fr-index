@@ -59,7 +59,7 @@ class FrenchStream : AnimeDomainSource() {
 
     private class FilemoonWrapper(private val client: OkHttpClient) : Extractor() {
         override val name = "Filemoon"
-        override val supportedUrls = listOf("filemoon.sx", "filemoon.to", "filemoon.nl", "mxzhxco8dft.com", "kokoflix.lol")
+        override val supportedUrls = listOf("filemoon.sx", "filemoon.to", "filemoon.nl", "mxzhxco8dft.com")
         private val extractor by lazy { FilemoonExtractor(client) }
         override fun videosFromHoster(hoster: Hoster): List<Video> {
             return extractor.videosFromUrl(hoster.hosterUrl, "${hoster.hosterName} - ")
@@ -68,7 +68,7 @@ class FrenchStream : AnimeDomainSource() {
 
     private class DoodWrapper(private val client: OkHttpClient) : Extractor() {
         override val name = "Doodstream"
-        override val supportedUrls = listOf("dood.to", "dood.so", "dood.la", "dood.ws", "doodstream.com", "doods.pro", "ds2play.com", "d0o0d.com", "do0od.com")
+        override val supportedUrls = listOf("dood.to", "dood.so", "dood.la", "dood.ws", "doodstream.com", "doods.pro", "ds2play.com", "d0o0d.com", "do0od.com", "playmogo.com")
         private val extractor by lazy { DoodExtractor(client) }
         override fun videosFromHoster(hoster: Hoster): List<Video> {
             return extractor.videoFromUrl(hoster.hosterUrl, hoster.hosterName)?.let { listOf(it) } ?: emptyList()
@@ -245,6 +245,7 @@ class FrenchStream : AnimeDomainSource() {
                     for (key in players.keys()) {
                         if (key == "premium") continue
                         val pData = players.optJSONObject(key) ?: continue
+                        val hosterName = mapPlayerKeyToName(key)
                         val vfUrl = pData.optString("vff").ifBlank {
                             pData.optString("vf").ifBlank {
                                 pData.optString("default").ifBlank {
@@ -252,10 +253,10 @@ class FrenchStream : AnimeDomainSource() {
                                 }
                             }
                         }
-                        if (vfUrl.isNotBlank()) vfUrls.add(vfUrl)
+                        if (vfUrl.isNotBlank()) vfUrls.add("$hosterName|$vfUrl")
 
                         val vostfrUrl = pData.optString("vostfr")
-                        if (vostfrUrl.isNotBlank()) vostfrUrls.add(vostfrUrl)
+                        if (vostfrUrl.isNotBlank()) vostfrUrls.add("$hosterName|$vostfrUrl")
                     }
 
                     if (vfUrls.isNotEmpty()) {
@@ -303,7 +304,10 @@ class FrenchStream : AnimeDomainSource() {
                         for (pKey in pData.keys()) {
                             if (pKey == "premium") continue
                             val u = pData.optString(pKey)
-                            if (u.isNotBlank()) urls.add(u)
+                            if (u.isNotBlank()) {
+                                val hosterName = mapPlayerKeyToName(pKey)
+                                urls.add("$hosterName|$u")
+                            }
                         }
                         if (urls.isNotEmpty()) {
                             val epNum = epKey.toFloatOrNull() ?: 0F
@@ -326,7 +330,10 @@ class FrenchStream : AnimeDomainSource() {
                         for (pKey in pData.keys()) {
                             if (pKey == "premium") continue
                             val u = pData.optString(pKey)
-                            if (u.isNotBlank()) urls.add(u)
+                            if (u.isNotBlank()) {
+                                val hosterName = mapPlayerKeyToName(pKey)
+                                urls.add("$hosterName|$u")
+                            }
                         }
                         if (urls.isNotEmpty()) {
                             val epNum = epKey.toFloatOrNull() ?: 0F
@@ -371,7 +378,7 @@ class FrenchStream : AnimeDomainSource() {
     // ============================ Video Links =============================
 
     override suspend fun getHosterList(episode: SEpisode): List<Hoster> {
-        val urls = if (episode.url.startsWith("/")) {
+        val entries = if (episode.url.startsWith("/")) {
             val targetUrl = if (episode.url.startsWith("http")) episode.url else "$baseUrl${episode.url}"
             try {
                 val doc = client.newCall(GET(targetUrl, headers)).execute().asJsoup()
@@ -383,14 +390,75 @@ class FrenchStream : AnimeDomainSource() {
             episode.url.split(",").filter { it.isNotBlank() }
         }
 
-        return urls.mapNotNull { rawUrl ->
-            val resolvedUrl = resolveRedirectIfNeeded(rawUrl)
-            val extractor = extractorList.firstOrNull { it.supportsUrl(resolvedUrl) }
-            extractor?.hosterFromUrl(resolvedUrl)
+        return entries.mapNotNull { entry ->
+            val (name, url) = if (entry.contains("|")) {
+                val parts = entry.split("|", limit = 2)
+                parts[0] to parts[1]
+            } else {
+                guessHosterName(entry) to entry
+            }
+            if (url.isNotBlank()) {
+                Hoster(
+                    hosterUrl = url,
+                    hosterName = name,
+                )
+            } else null
+        }
+    }
+
+    override suspend fun getVideoList(hoster: Hoster): List<Video> {
+        return try {
+            val resolvedUrl = resolveRedirectIfNeeded(hoster.hosterUrl)
+            val resolvedHoster = hoster.copy(hosterUrl = resolvedUrl)
+            val extractor = extractorList.firstOrNull {
+                it.name.equals(hoster.hosterName, ignoreCase = true) || it.supportsUrl(resolvedUrl) || it.supportsUrl(hoster.hosterUrl)
+            }
+            extractor?.videosFromHoster(resolvedHoster)?.map {
+                it.copy(preferred = isPreferred(hoster, it))
+            } ?: emptyList()
+        } catch (_: Throwable) {
+            emptyList()
+        }
+    }
+
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
+        return getHosterList(episode).flatMap { hoster ->
+            getVideoList(hoster)
         }
     }
 
     override fun hosterListParse(response: Response): List<Hoster> = throw UnsupportedOperationException()
+
+    private fun mapPlayerKeyToName(key: String): String {
+        return when (key.lowercase()) {
+            "vidzy" -> "Vidzy"
+            "uqload" -> "Uqload"
+            "voe" -> "VOE"
+            "filmoon", "filemoon" -> "Filemoon"
+            "dood", "doodstream", "netu" -> "Doodstream"
+            "streamwish" -> "StreamWish"
+            "vidmoly" -> "VidMoly"
+            "sibnet" -> "Sibnet"
+            "sendvid" -> "Sendvid"
+            else -> key.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        }
+    }
+
+    private fun guessHosterName(url: String): String {
+        val lower = url.lowercase()
+        return when {
+            "vidzy" in lower -> "Vidzy"
+            "uqload" in lower -> "Uqload"
+            "voe" in lower || "osaka_go" in lower || "susanexpectcare" in lower -> "VOE"
+            "filemoon" in lower || "grandline_go" in lower || "mxzhxco" in lower -> "Filemoon"
+            "dood" in lower || "tokyo_go" in lower || "playmogo" in lower -> "Doodstream"
+            "streamwish" in lower || "wishembed" in lower || "mwish" in lower || "strwish" in lower -> "StreamWish"
+            "vidmoly" in lower -> "VidMoly"
+            "sibnet" in lower -> "Sibnet"
+            "sendvid" in lower -> "Sendvid"
+            else -> extractorList.firstOrNull { it.supportsUrl(url) }?.name ?: "Lecteur"
+        }
+    }
 
     private fun resolveRedirectIfNeeded(url: String): String {
         if (!url.contains("kokoflix.lol") && !url.contains("trakx.lol")) {
