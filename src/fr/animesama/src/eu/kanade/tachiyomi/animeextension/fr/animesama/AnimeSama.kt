@@ -276,7 +276,11 @@ class AnimeSama : AnimeDomainSource() {
         return playerUrls.flatMapIndexed { i, playerList ->
             val prefix = "(${VOICES_VALUES[i].uppercase()}) "
             playerList.parallelMap { player ->
-                resolvePlayer(player, prefix)
+                try {
+                    resolvePlayer(player, prefix)
+                } catch (_: Throwable) {
+                    null
+                }
             }.filterNotNull()
         }.also { Log.d(name, it.joinToString { "${it.hosterName} (${it.hosterUrl})" }) }
     }

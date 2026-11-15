@@ -53,7 +53,7 @@ class VidHideExtractor(private val client: OkHttpClient, private val headers: He
             val parsed = json.decodeFromString<List<TrackDto>>("[$subtitleStr]")
             parsed.filter { it.kind.equals("captions", true) }
                 .map { Track(it.file, it.label!!) }
-        } catch (e: SerializationException) {
+        } catch (_: Throwable) {
             emptyList()
         }
 

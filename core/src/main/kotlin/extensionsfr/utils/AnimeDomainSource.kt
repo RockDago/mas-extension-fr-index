@@ -107,10 +107,14 @@ abstract class AnimeDomainSource: AnimeHttpSource(), ConfigurableAnimeSource {
     open val extractorList: List<Extractor> = emptyList()
 
     override suspend fun getVideoList(hoster: Hoster): List<Video> {
-        val extractor = extractorList.firstOrNull { it.supportsUrl(hoster.hosterUrl) }
-        return extractor?.videosFromHoster(hoster)?.map {
-            it.copy(preferred = isPreferred(hoster, it))
-        } ?: throw RuntimeException("$name getVideoList CRASH! ${hoster.hosterUrl}")
+        return try {
+            val extractor = extractorList.firstOrNull { it.supportsUrl(hoster.hosterUrl) }
+            extractor?.videosFromHoster(hoster)?.map {
+                it.copy(preferred = isPreferred(hoster, it))
+            } ?: emptyList()
+        } catch (_: Throwable) {
+            emptyList()
+        }
     }
 
     protected open fun isPreferred(hoster: Hoster, video: Video): Boolean = false

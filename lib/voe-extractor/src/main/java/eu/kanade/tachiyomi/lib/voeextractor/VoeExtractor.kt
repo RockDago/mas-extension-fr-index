@@ -7,12 +7,9 @@ import eu.kanade.tachiyomi.lib.playlistutils.PlaylistUtils
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import extensionsfr.utils.Extractor
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import org.jsoup.nodes.Document
-import uy.kohesive.injekt.injectLazy
 import kotlin.io.encoding.Base64
 import kotlin.text.substringAfter
 
@@ -36,23 +33,37 @@ class VoeExtractor(private val client: OkHttpClient, private val headers: Header
         "susanexpectcare.com",
     )
 
-    private val json: Json by injectLazy()
-
     private val playlistUtils by lazy { PlaylistUtils(client, headers) }
 
     private val linkRegex = Regex("(http|https)://([\\w_-]+(?:\\.[\\w_-]+)+)([\\w.,@?^=%&:/~+#-]*[\\w@?^=%&/~+#-])")
 
     private fun Document.resolveRedirect(): Document {
-        return if (this.selectFirst("title")!!.text().contains("Redirecting")) {
-            val url = Regex("""window.location.href\s=\s["'](.*)["']""").find(this.data())!!.groups[1]!!.value
-            client.newCall(GET(url, headers)).execute().asJsoup()
-        } else this
+        return try {
+            if (this.selectFirst("title")?.text()?.contains("Redirecting") == true) {
+                val url = Regex("""window.location.href\s=\s["'](.*)["']""").find(this.data())?.groups?.get(1)?.value
+                if (url != null) {
+                    client.newCall(GET(url, headers)).execute().asJsoup()
+                } else this
+            } else this
+        } catch (_: Throwable) {
+            this
+        }
     }
 
     override fun videosFromHoster(hoster: Hoster): List<Video> {
-        val document = client.newCall(GET(hoster.hosterUrl, headers)).execute().asJsoup().resolveRedirect()
-        val videos = listOf(::layout1, ::layout2, ::layout3).firstNotNullOfOrNull { it(document) }
-        return videos ?: Log.d(name, "total failure").let { emptyList() }
+        return try {
+            val document = client.newCall(GET(hoster.hosterUrl, headers)).execute().asJsoup().resolveRedirect()
+            val videos = listOf(::layout1, ::layout2, ::layout3).firstNotNullOfOrNull { layoutFn ->
+                try {
+                    layoutFn(document)
+                } catch (_: Throwable) {
+                    null
+                }
+            }
+            videos ?: Log.d(name, "total failure").let { emptyList() }
+        } catch (_: Throwable) {
+            emptyList()
+        }
     }
 
     // === Layout 1
@@ -65,15 +76,12 @@ class VoeExtractor(private val client: OkHttpClient, private val headers: Header
     }
 
     // === Layout 2
-    @Serializable
-    data class Layout2Dto(val file: String)
-
     private fun layout2(document: Document): List<Video>? {
         val script = document.selectFirst("script:containsData(wc0)")?.data()
         if (script == null) return Log.d(name, "layout2 failure").let { null }
-        val base64 = Regex("'.*'").find(script)!!.value
+        val base64 = Regex("'.*'").find(script)?.value?.trim('\'') ?: return null
         val decoded = Base64.decode(base64).decodeToString()
-        val url = json.decodeFromString<Layout2Dto>(decoded).file
+        val url = Regex(""""file"\s*:\s*"([^"]+)"""").find(decoded)?.groupValues?.get(1) ?: return null
         return playlistUtils.extractFromHls(url)
     }
 
@@ -88,9 +96,6 @@ class VoeExtractor(private val client: OkHttpClient, private val headers: Header
 
     private val markers = listOf("@$", "^^", "~@", "%?", "*~", "!!", "#&")
 
-    @Serializable
-    private data class Layout3Dto(val source: String)
-
     private fun layout3(document: Document): List<Video>? {
         val enc = document.selectFirst("""script[type="application/json"]""")?.data()
             ?.substringAfter('"')?.substringBefore('"')
@@ -101,8 +106,7 @@ class VoeExtractor(private val client: OkHttpClient, private val headers: Header
         val shifted = decoded.map { b -> (b - 3).toChar() }
         val reversed = shifted.reversed().joinToString("")
         val dec = Base64.decode(reversed).decodeToString()
-        val url = json.decodeFromString<Layout3Dto>(dec).source
-        val playlist = playlistUtils.extractFromHls(url)
-        return playlist
+        val url = Regex(""""source"\s*:\s*"([^"]+)"""").find(dec)?.groupValues?.get(1) ?: return null
+        return playlistUtils.extractFromHls(url)
     }
 }
