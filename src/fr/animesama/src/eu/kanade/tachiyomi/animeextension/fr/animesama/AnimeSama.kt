@@ -57,7 +57,7 @@ class AnimeSama : AnimeDomainSource() {
                 setUrlWithoutDomain(it.attr("href").removeSuffix("/"))
                 title = it.select("h3.as-carte-titre").text().ifBlank { it.attr("data-nom") }
                 thumbnail_url = it.selectFirst("img")?.attr("src")
-                fetch_type = FetchType.Seasons
+                fetch_type = FetchType.Episodes
             }
         }
         return AnimesPage(anime, false)
@@ -75,7 +75,7 @@ class AnimeSama : AnimeDomainSource() {
                 setUrlWithoutDomain(animeUrl)
                 title = it.select("h3.as-carte-titre").text().ifBlank { it.parent()?.attr("data-nom") ?: "" }
                 thumbnail_url = it.selectFirst("img")?.attr("src")
-                fetch_type = FetchType.Seasons
+                fetch_type = FetchType.Episodes
             }
         }.distinctBy { it.url }
         return AnimesPage(animes, false)
@@ -104,7 +104,7 @@ class AnimeSama : AnimeDomainSource() {
                 title = it.select("h3.as-carte-titre").text().ifBlank { it.parent()?.attr("data-nom") ?: "" }
                 thumbnail_url = it.selectFirst("img")?.attr("src")
                 background_url = thumbnail_url
-                fetch_type = FetchType.Seasons
+                fetch_type = FetchType.Episodes
             }
         }
         val page = response.request.url.queryParameterValues("page").first()?.toInt() ?: 1
@@ -167,14 +167,14 @@ class AnimeSama : AnimeDomainSource() {
 
     // === Anime Details ===
     override suspend fun getAnimeDetails(anime: SAnime): SAnime {
-        return if (anime.fetch_type == FetchType.Seasons) {
-            super.getAnimeDetails(anime)
+        val parts = anime.url.trim('/').split('/')
+        val parentUrl = if (parts.size >= 2) {
+            "/catalogue/${parts[1]}"
         } else {
-            val animeUrl = anime.url.substringBeforeLast("/").substringBeforeLast("/")
-                .removeSuffix("/")
-            super.getAnimeDetails(SAnime.create().apply { url = animeUrl })
-        }.apply {
-            title = anime.title
+            anime.url
+        }
+        return super.getAnimeDetails(SAnime.create().apply { url = parentUrl }).apply {
+            title = anime.title.ifBlank { this.title }
             url = anime.url
         }
     }
@@ -191,6 +191,58 @@ class AnimeSama : AnimeDomainSource() {
 
     // === Episodes ===
     override suspend fun getEpisodeList(anime: SAnime): List<SEpisode> {
+        val trimmed = anime.url.removePrefix("/").removeSuffix("/")
+        val parts = trimmed.split('/')
+
+        // If it's a parent anime page (/catalogue/<slug>, parts.size <= 2)
+        if (parts.size <= 2) {
+            val response = try {
+                client.newCall(GET("$baseUrl/$trimmed", headers)).await()
+            } catch (_: Exception) {
+                null
+            }
+
+            if (response != null && response.isSuccessful) {
+                val body = response.asJsoup()
+                val scriptsText = body.select("script").joinToString("\n") { it.data().ifBlank { it.html() } }
+                val cleanScripts = scriptsText.replace(commentRegex, "")
+                val seasons = seasonRegex.findAll(cleanScripts)
+                    .filter { match ->
+                        val (name, stem) = match.destructured
+                        name != "nom" && stem != "url"
+                    }
+                    .map {
+                        val (name, stem) = it.destructured
+                        Pair(name, stem.trim('/'))
+                    }.toList()
+
+                if (seasons.isNotEmpty()) {
+                    val allEpisodes = mutableListOf<SEpisode>()
+                    var globalEpIndex = 1
+                    for ((seasonName, seasonStem) in seasons) {
+                        val cleanStem = if (VOICES_VALUES.any { seasonStem.endsWith("/$it") }) {
+                            seasonStem.substringBeforeLast('/')
+                        } else {
+                            seasonStem
+                        }
+                        val seasonSubPath = "/catalogue/${parts.last()}/$cleanStem"
+                        val players = VOICES_VALUES.toList().parallelMap { voice ->
+                            fetchPlayers("$baseUrl$seasonSubPath/$voice", "$seasonSubPath/$voice")
+                        }
+                        val seasonEpisodes = playersToEpisodes(
+                            players,
+                            seasonName = if (seasons.size > 1) seasonName else null,
+                            startIndex = globalEpIndex,
+                        )
+                        allEpisodes.addAll(seasonEpisodes)
+                        globalEpIndex += seasonEpisodes.size
+                    }
+                    return allEpisodes.reversed()
+                }
+            }
+        }
+
+        // Single season or specific season sub-path:
         val seasonPath = anime.url.removeSuffix("/")
         val seasonUrl = if (VOICES_VALUES.any { seasonPath.endsWith("/$it") }) {
             seasonPath.substringBeforeLast('/')
@@ -231,14 +283,25 @@ class AnimeSama : AnimeDomainSource() {
 
     override fun hosterListParse(response: Response) = throw UnsupportedOperationException()
 
-    private fun playersToEpisodes(list: List<List<List<String>>>): List<SEpisode> =
-        List(list.fold(0) { acc, it -> maxOf(acc, it.size) }) { episodeNumber ->
-            val players = list.map { it.getOrElse(episodeNumber) { emptyList() } }
+    private fun playersToEpisodes(
+        list: List<List<List<String>>>,
+        seasonName: String? = null,
+        startIndex: Int = 1,
+    ): List<SEpisode> =
+        List(list.fold(0) { acc, it -> maxOf(acc, it.size) }) { i ->
+            val episodeNumber = i + 1
+            val players = list.map { it.getOrElse(i) { emptyList() } }
             SEpisode.create().apply {
-                name = "Episode ${episodeNumber + 1}"
+                name = if (seasonName != null) {
+                    "$seasonName Épisode $episodeNumber"
+                } else {
+                    "Épisode $episodeNumber"
+                }
                 url = json.encodeToString(players)
-                episode_number = (episodeNumber + 1).toFloat()
-                scanlator = players.mapIndexedNotNull { i, it -> if (it.isNotEmpty()) VOICES_VALUES[i] else null }.joinToString().uppercase()
+                episode_number = (startIndex + i).toFloat()
+                scanlator = players.mapIndexedNotNull { voiceIdx, voicePlayers ->
+                    if (voicePlayers.isNotEmpty()) VOICES_VALUES[voiceIdx] else null
+                }.joinToString().uppercase()
             }
         }
 
