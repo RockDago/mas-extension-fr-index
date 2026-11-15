@@ -271,11 +271,6 @@ class AnimeSama : AnimeDomainSource() {
         VoeExtractor(client, headers),
     )
 
-    override fun isPreferred(hoster: Hoster, video: Video): Boolean {
-        val prefQuality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT) ?: PREF_QUALITY_DEFAULT
-        return video.videoTitle.contains(prefQuality)
-    }
-
     override suspend fun getHosterList(episode: SEpisode): List<Hoster> {
         val playerUrls = json.decodeFromString<List<List<String>>>(episode.url)
         val prefVoice = preferences.getString(PREF_VOICES_KEY, PREF_VOICES_DEFAULT) ?: PREF_VOICES_DEFAULT
