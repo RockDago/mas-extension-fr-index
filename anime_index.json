@@ -17,7 +17,9 @@
         "baseUrl": "https://anime-sama.to",
         "versionId": 1
       }
-    ]
+    ],
+    "apkUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/apk/aniyomi-fr.animesama-v16.20.apk",
+    "iconUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/icon/eu.kanade.tachiyomi.animeextension.fr.animesama.png"
   },
   {
     "name": "Aniyomi: FrAnime",
@@ -37,7 +39,9 @@
         "baseUrl": "",
         "versionId": 1
       }
-    ]
+    ],
+    "apkUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/apk/aniyomi-fr.franime-v16.16.apk",
+    "iconUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/icon/eu.kanade.tachiyomi.animeextension.fr.franime.png"
   },
   {
     "name": "Aniyomi: French Anime",
@@ -57,6 +61,8 @@
         "baseUrl": "",
         "versionId": 1
       }
-    ]
+    ],
+    "apkUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/apk/aniyomi-fr.frenchanime-v16.11.apk",
+    "iconUrl": "https://raw.githubusercontent.com/RockDago/mas-extension-fr-index/repo/icon/eu.kanade.tachiyomi.animeextension.fr.frenchanime.png"
   }
 ]
