@@ -273,9 +273,7 @@ class AnimeSama : AnimeDomainSource() {
 
     override fun isPreferred(hoster: Hoster, video: Video): Boolean {
         val prefQuality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT) ?: PREF_QUALITY_DEFAULT
-        val matchesQuality = video.quality.contains(prefQuality)
-        val isVf = hoster.hosterName.contains("(VF)") || video.quality.contains("(VF)")
-        return if (isVf) matchesQuality else false
+        return video.videoTitle.contains(prefQuality)
     }
 
     override suspend fun getHosterList(episode: SEpisode): List<Hoster> {
