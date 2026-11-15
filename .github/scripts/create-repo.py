@@ -61,10 +61,15 @@ for apk in REPO_APK_DIR.iterdir():
         ):
             language = source_language
 
+    repo_name = os.environ.get("GITHUB_REPOSITORY", "RockDago/mas-extension-fr-index")
+    raw_base_url = f"https://raw.githubusercontent.com/{repo_name}/repo"
+
     common_data = {
         "name": APPLICATION_LABEL_REGEX.search(badging).group(1),
         "pkg": package_name,
         "apk": apk.name,
+        "apkUrl": f"{raw_base_url}/apk/{apk.name}",
+        "iconUrl": f"{raw_base_url}/icon/{package_name}.png",
         "lang": language,
         "code": int(VERSION_CODE_REGEX.search(package_info).group(1)),
         "version": VERSION_NAME_REGEX.search(package_info).group(1),
