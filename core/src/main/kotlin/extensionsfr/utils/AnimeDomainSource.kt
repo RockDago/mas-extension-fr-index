@@ -18,6 +18,7 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Response
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -124,6 +125,10 @@ abstract class AnimeDomainSource: AnimeHttpSource(), ConfigurableAnimeSource {
         return extractor?.resolveVideo(video)
             ?: throw RuntimeException("$name resolveVideo CRASH! ${video.videoUrl}")
     }
+
+    override fun hosterListParse(response: Response): List<Hoster> = throw UnsupportedOperationException()
+
+    override fun seasonListParse(response: Response): List<SAnime> = throw UnsupportedOperationException()
 
     // ===
 

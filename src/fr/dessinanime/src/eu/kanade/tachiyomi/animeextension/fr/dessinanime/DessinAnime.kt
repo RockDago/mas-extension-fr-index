@@ -69,16 +69,27 @@ class DessinAnime : AnimeDomainSource() {
         }
     }
 
+    private class StreamWishWrapper(private val client: OkHttpClient, private val headers: Headers) : Extractor() {
+        override val name = "StreamWish"
+        override val supportedUrls = listOf("streamwish", "wishembed", "mwish", "strwish", "awish", "sugarswish")
+        private val extractor by lazy { StreamWishExtractor(client, headers) }
+        override fun videosFromHoster(hoster: Hoster): List<Video> {
+            return extractor.videosFromUrl(hoster.hosterUrl, hoster.hosterName)
+        }
+    }
+
     override val extractorList: List<Extractor> = listOf(
         VidzyExtractor(client),
         VoeExtractor(client, headers),
         UqloadExtractor(client),
-        StreamWishExtractor(client),
+        StreamWishWrapper(client, headers),
         VidMolyExtractor(client),
         SibnetExtractor(client),
         SendvidExtractor(client, headers),
         FilemoonWrapper(client),
     )
+
+    override fun seasonListParse(response: Response): List<SAnime> = throw UnsupportedOperationException()
 
     // ============================== Popular ===============================
 
