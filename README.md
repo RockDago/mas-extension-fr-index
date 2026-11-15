@@ -1,0 +1,1 @@
+# mas-extension-fr-index
