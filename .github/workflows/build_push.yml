@@ -171,14 +171,19 @@ jobs:
 
       - name: Ensure repo branch directory exists
         run: |
-          if [ ! -d "repo/.git" ]; then
-            echo "Branch repo not found or checkout failed, creating local repo branch..."
-            mkdir -p repo
-            cd repo
+          mkdir -p repo
+          cd repo
+          if [ ! -d ".git" ]; then
             git init -b repo
             git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-            git fetch origin repo || true
-            git checkout repo || git checkout -b repo
+          else
+            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          fi
+          git fetch origin repo 2>/dev/null || true
+          if git rev-parse --verify origin/repo >/dev/null 2>&1; then
+            git checkout -B repo origin/repo
+          else
+            git checkout -B repo
           fi
 
       - name: Deploy repo
