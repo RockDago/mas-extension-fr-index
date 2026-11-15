@@ -352,8 +352,12 @@ class AnimeSama : AnimeDomainSource() {
                 })()
             """.trimIndent()
 
-            val jsonStr = QuickJs.create().use { qjs ->
-                qjs.evaluate(evalCode) as? String
+            val jsonStr = try {
+                QuickJs.create().use { qjs ->
+                    qjs.evaluate(evalCode) as? String
+                }
+            } catch (_: Throwable) {
+                null
             }
 
             if (!jsonStr.isNullOrBlank()) {
@@ -386,7 +390,7 @@ class AnimeSama : AnimeDomainSource() {
                     }
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.d(name, "QuickJs parse failed: ${e.message}")
         }
 
