@@ -1,7 +1,7 @@
 ext {
     extName = 'Anime-Sama'
     extClass = '.AnimeSama'
-    extVersionCode = 27
+    extVersionCode = 28
 }
 
 apply from: "$rootDir/common.gradle"
@@ -15,4 +15,5 @@ dependencies {
     implementation(project(':lib:uqload-extractor'))
     implementation(project(':lib:vidhide-extractor'))
     implementation(project(':lib:voe-extractor'))
+    implementation(libs.quickjs)
 }

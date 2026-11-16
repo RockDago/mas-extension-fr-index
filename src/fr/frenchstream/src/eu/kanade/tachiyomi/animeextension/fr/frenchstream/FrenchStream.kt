@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.lib.cloudflareinterceptor.CloudflareInterceptor
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.lib.filemoonextractor.FilemoonExtractor
 import eu.kanade.tachiyomi.lib.sibnetextractor.SibnetExtractor
@@ -47,6 +48,7 @@ class FrenchStream : AnimeDomainSource() {
     }
 
     override val client: OkHttpClient = network.client.newBuilder()
+        .addInterceptor(CloudflareInterceptor(network.client))
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -59,7 +61,7 @@ class FrenchStream : AnimeDomainSource() {
 
     private class FilemoonWrapper(private val client: OkHttpClient) : Extractor() {
         override val name = "Filemoon"
-        override val supportedUrls = listOf("filemoon.sx", "filemoon.to", "filemoon.nl", "mxzhxco8dft.com")
+        override val supportedUrls = listOf("filemoon.sx", "filemoon.to", "filemoon.nl", "mxzhxco8dft.com", "kokoflix.lol", "trakx.lol")
         private val extractor by lazy { FilemoonExtractor(client) }
         override fun videosFromHoster(hoster: Hoster): List<Video> {
             return extractor.videosFromUrl(hoster.hosterUrl, "${hoster.hosterName} - ")

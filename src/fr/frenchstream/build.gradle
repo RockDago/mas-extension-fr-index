@@ -1,12 +1,13 @@
 ext {
     extName = 'French Stream'
     extClass = '.FrenchStream'
-    extVersionCode = 5
+    extVersionCode = 6
 }
 
 apply from: "$rootDir/common.gradle"
 
 dependencies {
+    implementation(project(':lib:cloudflare-interceptor'))
     implementation(project(':lib:vidzy-extractor'))
     implementation(project(':lib:voe-extractor'))
     implementation(project(':lib:uqload-extractor'))

@@ -62,7 +62,7 @@ class DessinAnime : AnimeDomainSource() {
 
     private class FilemoonWrapper(private val client: OkHttpClient) : Extractor() {
         override val name = "Filemoon"
-        override val supportedUrls = listOf("filemoon.sx", "filemoon.to", "filemoon.nl", "mxzhxco8dft.com")
+        override val supportedUrls = listOf("filemoon.sx", "filemoon.to", "filemoon.nl", "mxzhxco8dft.com", "kokoflix.lol", "trakx.lol")
         private val extractor by lazy { FilemoonExtractor(client) }
         override fun videosFromHoster(hoster: Hoster): List<Video> {
             return extractor.videosFromUrl(hoster.hosterUrl, "${hoster.hosterName} - ")
