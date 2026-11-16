@@ -169,77 +169,82 @@ class VoirAnime : AnimeDomainSource() {
 
             val cleanAnimeUrl = anime.url.substringBefore('#')
 
-            if (hasVostfr && prefVoice != "vf") {
-                episodeList.add(
-                    SEpisode.create().apply {
-                        name = "Film complet VOSTFR"
-                        episode_number = 1F
-                        scanlator = "VOSTFR"
-                        url = "$cleanAnimeUrl#vostfr"
-                    },
-                )
+            val scanlatorText = when {
+                hasVf && hasVostfr -> "VF & VOSTFR"
+                hasVf -> "VF"
+                hasVostfr -> "VOSTFR"
+                else -> null
             }
-            if (hasVf && prefVoice != "vostfr") {
-                episodeList.add(
-                    SEpisode.create().apply {
-                        name = "Film complet VF"
-                        episode_number = if (episodeList.isEmpty()) 1F else 2F
-                        scanlator = "VF"
-                        url = "$cleanAnimeUrl#vf"
-                    },
-                )
+
+            val filmUrl = when {
+                prefVoice == "vf" && hasVf -> "$cleanAnimeUrl#vf"
+                prefVoice == "vostfr" && hasVostfr -> "$cleanAnimeUrl#vostfr"
+                hasVf && hasVostfr -> "$cleanAnimeUrl#vostfr|$cleanAnimeUrl#vf"
+                hasVf -> "$cleanAnimeUrl#vf"
+                else -> "$cleanAnimeUrl#vostfr"
             }
-            if (episodeList.isEmpty()) {
-                episodeList.add(
-                    SEpisode.create().apply {
-                        name = "Film complet"
-                        episode_number = 1F
-                        url = cleanAnimeUrl
-                    },
-                )
-            }
+
+            episodeList.add(
+                SEpisode.create().apply {
+                    name = "Film complet"
+                    episode_number = 1F
+                    scanlator = scanlatorText
+                    url = filmUrl
+                },
+            )
             return episodeList
         }
 
         // 2. Series with seasons
         val prefVoice = preferences.getString(PREF_VOICES_KEY, PREF_VOICES_DEFAULT) ?: PREF_VOICES_DEFAULT
         if (seasonsGrid.isNotEmpty()) {
-            val seasonsEpisodes = seasonsGrid.parallelMap { seasonEl ->
+            val seasonData = seasonsGrid.parallelMap { seasonEl ->
                 val seasonHref = seasonEl.attr("href").trim()
                 val seasonTitle = seasonEl.selectFirst(".season-title")?.text()?.trim()
                     ?: seasonEl.attr("title").trim()
                 val sUrl = if (seasonHref.startsWith("http")) seasonHref else "$baseUrl$seasonHref"
-                fetchSeasonEpisodes(sUrl, seasonTitle, prefVoice)
-            }.flatten()
-            episodeList.addAll(seasonsEpisodes)
+                val sDoc = try {
+                    client.newCall(GET(sUrl, headers)).await().asJsoup()
+                } catch (_: Exception) {
+                    null
+                }
+                Pair(seasonTitle, sDoc)
+            }
+
+            var globalEpIndex = 1
+            for ((seasonTitle, sDoc) in seasonData) {
+                if (sDoc == null) continue
+                val sEpisodes = parseEpisodesFromDoc(
+                    sDoc,
+                    seasonTitle = if (seasonsGrid.size > 1) seasonTitle else null,
+                    prefVoice = prefVoice,
+                    startIndex = globalEpIndex,
+                )
+                episodeList.addAll(sEpisodes)
+                globalEpIndex += sEpisodes.size
+            }
         } else {
-            episodeList.addAll(parseEpisodesFromDoc(doc, "Saison 1", prefVoice))
+            episodeList.addAll(parseEpisodesFromDoc(doc, null, prefVoice, 1))
         }
 
-        return episodeList.sortedBy { it.episode_number }
+        return episodeList.reversed()
     }
 
-    private fun fetchSeasonEpisodes(seasonUrl: String, seasonTitle: String, prefVoice: String): List<SEpisode> {
-        return try {
-            val response = client.newCall(GET(seasonUrl, headers)).execute()
-            val doc = response.asJsoup()
-            parseEpisodesFromDoc(doc, seasonTitle, prefVoice)
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun parseEpisodesFromDoc(doc: Document, seasonTitle: String, prefVoice: String): List<SEpisode> {
+    private fun parseEpisodesFromDoc(
+        doc: Document,
+        seasonTitle: String?,
+        prefVoice: String,
+        startIndex: Int,
+    ): List<SEpisode> {
         val episodes = mutableListOf<SEpisode>()
-        val seasonNum = Regex("""(?:saison|season)[^\d]*(\d+)""", RegexOption.IGNORE_CASE)
-            .find(seasonTitle)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+        val cards = doc.select("a.episode-card")
 
-        doc.select("a.episode-card").forEach { card ->
+        cards.forEachIndexed { i, card ->
             val baseHref = card.attr("href").trim()
             val epText = card.selectFirst(".episode-number, .episode-title")?.text()?.trim() ?: ""
-            val epNum = Regex("""episode-(\d+)""", RegexOption.IGNORE_CASE).find(baseHref)?.groupValues?.get(1)?.toFloatOrNull()
-                ?: Regex("""\d+""").find(epText)?.value?.toFloatOrNull()
-                ?: 1F
+            val epNum = Regex("""episode-(\d+)""", RegexOption.IGNORE_CASE).find(baseHref)?.groupValues?.get(1)?.toIntOrNull()
+                ?: Regex("""\d+""").find(epText)?.value?.toIntOrNull()
+                ?: (i + 1)
 
             val rawLangs = card.attr("data-langs").lowercase().split(" ")
                 .map { it.trim() }
@@ -254,74 +259,37 @@ class VoirAnime : AnimeDomainSource() {
             val vfHref = baseHref.replace(Regex("""/(vostfr|va|vkr)/?$"""), "/vf/")
             val vostfrHref = baseHref.replace(Regex("""/(vf|va|vkr)/?$"""), "/vostfr/")
 
-            val cleanTitle = if (epText.isNotBlank()) epText else "Épisode ${epNum.toInt()}"
-
-            when (prefVoice) {
-                "vostfr" -> {
-                    if (hasVostfr) {
-                        episodes.add(
-                            SEpisode.create().apply {
-                                name = "$seasonTitle $cleanTitle VOSTFR"
-                                episode_number = (seasonNum * 1000F) + epNum
-                                scanlator = "VOSTFR"
-                                url = vostfrHref
-                            },
-                        )
-                    } else if (hasVf) {
-                        episodes.add(
-                            SEpisode.create().apply {
-                                name = "$seasonTitle $cleanTitle VF"
-                                episode_number = (seasonNum * 1000F) + epNum
-                                scanlator = "VF"
-                                url = vfHref
-                            },
-                        )
-                    }
-                }
-                "vf" -> {
-                    if (hasVf) {
-                        episodes.add(
-                            SEpisode.create().apply {
-                                name = "$seasonTitle $cleanTitle VF"
-                                episode_number = (seasonNum * 1000F) + epNum
-                                scanlator = "VF"
-                                url = vfHref
-                            },
-                        )
-                    } else if (hasVostfr) {
-                        episodes.add(
-                            SEpisode.create().apply {
-                                name = "$seasonTitle $cleanTitle VOSTFR"
-                                episode_number = (seasonNum * 1000F) + epNum
-                                scanlator = "VOSTFR"
-                                url = vostfrHref
-                            },
-                        )
-                    }
-                }
-                else -> { // "both"
-                    if (hasVostfr) {
-                        episodes.add(
-                            SEpisode.create().apply {
-                                name = "$seasonTitle $cleanTitle VOSTFR"
-                                episode_number = (seasonNum * 1000F) + epNum
-                                scanlator = "VOSTFR"
-                                url = vostfrHref
-                            },
-                        )
-                    }
-                    if (hasVf) {
-                        episodes.add(
-                            SEpisode.create().apply {
-                                name = "$seasonTitle $cleanTitle VF"
-                                episode_number = (seasonNum * 1000F) + epNum + 0.5F
-                                scanlator = "VF"
-                                url = vfHref
-                            },
-                        )
-                    }
-                }
+            val cleanTitle = if (epText.isNotBlank()) epText else "Épisode $epNum"
+            val epName = if (!seasonTitle.isNullOrBlank()) {
+                val cleanSeason = seasonTitle.replace(Regex("""\s+en streaming.*""", RegexOption.IGNORE_CASE), "").trim()
+                "$cleanSeason $cleanTitle"
+            } else {
+                cleanTitle
             }
+
+            val scanlatorText = when {
+                hasVf && hasVostfr -> "VF & VOSTFR"
+                hasVf -> "VF"
+                hasVostfr -> "VOSTFR"
+                else -> null
+            }
+
+            val epUrl = when {
+                prefVoice == "vf" && hasVf -> vfHref
+                prefVoice == "vostfr" && hasVostfr -> vostfrHref
+                hasVf && hasVostfr -> "$vostfrHref|$vfHref"
+                hasVf -> vfHref
+                else -> vostfrHref
+            }
+
+            episodes.add(
+                SEpisode.create().apply {
+                    name = epName
+                    episode_number = (startIndex + i).toFloat()
+                    scanlator = scanlatorText
+                    url = epUrl
+                },
+            )
         }
         return episodes
     }
@@ -377,81 +345,155 @@ class VoirAnime : AnimeDomainSource() {
     override fun hosterListParse(response: Response): List<Hoster> = throw UnsupportedOperationException()
 
     override suspend fun getHosterList(episode: SEpisode): List<Hoster> {
-        val cleanUrl = episode.url.substringBefore('#')
-        val targetUrl = if (cleanUrl.startsWith("http")) cleanUrl else "$baseUrl$cleanUrl"
-        val doc = try {
-            client.newCall(GET(targetUrl, headers)).await().asJsoup()
-        } catch (_: Exception) {
-            return emptyList()
-        }
+        val prefVoice = preferences.getString(PREF_VOICES_KEY, PREF_VOICES_DEFAULT) ?: PREF_VOICES_DEFAULT
+        val prefHoster = preferences.getString(PREF_HOSTER_KEY, PREF_HOSTER_DEFAULT) ?: PREF_HOSTER_DEFAULT
 
         val hosters = mutableListOf<Hoster>()
         val seenUrls = mutableSetOf<String>()
 
-        // Check if Film script has filmUrls
-        val filmScript = doc.selectFirst("script:containsData(filmUrls)")?.data() ?: ""
-        if (filmScript.contains("filmUrls")) {
-            val isVf = episode.url.contains("#vf") || episode.scanlator.equals("VF", ignoreCase = true)
-            val isVostfr = episode.url.contains("#vostfr") || episode.scanlator.equals("VOSTFR", ignoreCase = true)
-            val vfUrl = Regex(""""vf"\s*:\s*"([^"]+)"""").find(filmScript)?.groupValues?.get(1)?.replace("\\/", "/")
-            val vostfrUrl = Regex(""""vostfr"\s*:\s*"([^"]+)"""").find(filmScript)?.groupValues?.get(1)?.replace("\\/", "/")
+        // Check if episode is a Film with #vostfr / #vf
+        val filmUrls = episode.url.split('|').filter { it.isNotBlank() }
+        val isFilm = filmUrls.any { it.contains('#') }
 
-            val selectedUrl = when {
-                isVf && !vfUrl.isNullOrBlank() -> vfUrl
-                isVostfr && !vostfrUrl.isNullOrBlank() -> vostfrUrl
-                !vostfrUrl.isNullOrBlank() -> vostfrUrl
-                !vfUrl.isNullOrBlank() -> vfUrl
-                else -> null
+        if (isFilm) {
+            for (fUrl in filmUrls) {
+                val cleanUrl = fUrl.substringBefore('#')
+                val targetUrl = if (cleanUrl.startsWith("http")) cleanUrl else "$baseUrl$cleanUrl"
+                val doc = try {
+                    client.newCall(GET(targetUrl, headers)).await().asJsoup()
+                } catch (_: Exception) {
+                    continue
+                }
+
+                val filmScript = doc.selectFirst("script:containsData(filmUrls)")?.data() ?: ""
+                val vfUrl = Regex(""""vf"\s*:\s*"([^"]+)"""").find(filmScript)?.groupValues?.get(1)?.replace("\\/", "/")
+                val vostfrUrl = Regex(""""vostfr"\s*:\s*"([^"]+)"""").find(filmScript)?.groupValues?.get(1)?.replace("\\/", "/")
+
+                val wantsVf = fUrl.contains("#vf") || episode.scanlator.equals("VF", ignoreCase = true)
+                val wantsVostfr = fUrl.contains("#vostfr") || episode.scanlator.equals("VOSTFR", ignoreCase = true)
+
+                if ((wantsVostfr || !wantsVf) && !vostfrUrl.isNullOrBlank() && seenUrls.add(vostfrUrl)) {
+                    val rawName = guessHosterName(vostfrUrl)
+                    hosters.add(Hoster(hosterUrl = vostfrUrl, hosterName = "(VOSTFR) $rawName"))
+                }
+                if ((wantsVf || !wantsVostfr) && !vfUrl.isNullOrBlank() && seenUrls.add(vfUrl)) {
+                    val rawName = guessHosterName(vfUrl)
+                    hosters.add(Hoster(hosterUrl = vfUrl, hosterName = "(VF) $rawName"))
+                }
             }
-            if (!selectedUrl.isNullOrBlank() && seenUrls.add(selectedUrl)) {
-                hosters.add(Hoster(hosterUrl = selectedUrl, hosterName = guessHosterName(selectedUrl)))
+            if (hosters.isNotEmpty()) {
+                return sortHosters(hosters, prefVoice, prefHoster)
+            }
+        }
+
+        // Standard episode URLs (may contain "vostfrHref|vfHref" or single URL)
+        val targetUrls = episode.url.split('|').map { it.trim() }.filter { it.isNotBlank() }
+
+        for (targetPath in targetUrls) {
+            val cleanUrl = targetPath.substringBefore('#')
+            val fullUrl = if (cleanUrl.startsWith("http")) cleanUrl else "$baseUrl$cleanUrl"
+            val doc = try {
+                client.newCall(GET(fullUrl, headers)).await().asJsoup()
+            } catch (_: Exception) {
+                continue
+            }
+
+            val isVf = cleanUrl.contains("/vf/") || cleanUrl.endsWith("/vf")
+            val isVostfr = cleanUrl.contains("/vostfr/") || cleanUrl.endsWith("/vostfr")
+            val langPrefix = when {
+                isVf -> "(VF)"
+                isVostfr -> "(VOSTFR)"
+                else -> ""
+            }
+
+            extractHostersFromDoc(doc, langPrefix, seenUrls, hosters)
+
+            // If only one URL was provided and prefVoice is "both", check if page has switch to other language
+            if (targetUrls.size == 1 && prefVoice == "both") {
+                val otherLangLink = doc.selectFirst("a.lang-switch:not(.active), .film-language-selector a:not(.active)")?.attr("href")?.trim()
+                if (!otherLangLink.isNullOrBlank()) {
+                    val otherFullUrl = if (otherLangLink.startsWith("http")) otherLangLink else "$baseUrl$otherLangLink"
+                    val otherDoc = try {
+                        client.newCall(GET(otherFullUrl, headers)).await().asJsoup()
+                    } catch (_: Exception) {
+                        null
+                    }
+                    if (otherDoc != null) {
+                        val otherIsVf = otherLangLink.contains("/vf/") || otherLangLink.endsWith("/vf")
+                        val otherPrefix = if (otherIsVf) "(VF)" else "(VOSTFR)"
+                        extractHostersFromDoc(otherDoc, otherPrefix, seenUrls, hosters)
+                    }
+                }
+            }
+        }
+
+        return sortHosters(hosters, prefVoice, prefHoster)
+    }
+
+    private fun extractHostersFromDoc(
+        doc: Document,
+        langPrefix: String,
+        seenUrls: MutableSet<String>,
+        hosters: MutableList<Hoster>,
+    ) {
+        fun addHoster(url: String, label: String = "") {
+            val trimmedUrl = url.trim()
+            if (trimmedUrl.startsWith("http") && !trimmedUrl.contains("about:blank") && seenUrls.add(trimmedUrl)) {
+                val rawName = guessHosterName(trimmedUrl, label)
+                val finalName = if (langPrefix.isNotBlank()) "$langPrefix $rawName" else rawName
+                hosters.add(Hoster(hosterUrl = trimmedUrl, hosterName = finalName))
             }
         }
 
         // 1. Check select#epLecteurSelect option[value^=http]
         doc.select("#epLecteurSelect option").forEach { opt ->
-            val url = opt.attr("value").trim()
-            val label = opt.text().trim()
-            if (url.startsWith("http") && seenUrls.add(url)) {
-                hosters.add(Hoster(hosterUrl = url, hosterName = guessHosterName(url, label)))
-            }
+            addHoster(opt.attr("value"), opt.text())
         }
 
         // 2. Check vrReaderButtons
         doc.select("#vrReaderButtons button[data-url], [data-player-url]").forEach { btn ->
-            val url = btn.attr("data-url").ifBlank { btn.attr("data-player-url") }.trim()
-            val label = btn.text().trim()
-            if (url.startsWith("http") && seenUrls.add(url)) {
-                hosters.add(Hoster(hosterUrl = url, hosterName = guessHosterName(url, label)))
-            }
+            val u = btn.attr("data-url").ifBlank { btn.attr("data-player-url") }
+            addHoster(u, btn.text())
         }
 
         // 3. Check video wrapper iframes
         doc.select(".video-wrapper iframe[src], #videoPlayer[src]").forEach { iframe ->
-            val url = iframe.attr("src").trim()
-            if (url.startsWith("http") && !url.contains("about:blank") && seenUrls.add(url)) {
-                hosters.add(Hoster(hosterUrl = url, hosterName = guessHosterName(url)))
-            }
+            addHoster(iframe.attr("src"))
         }
 
-        // 4. Check inline scripts for embed links
+        // 4. Check inline scripts for embed links or currentUrl
         val allScripts = doc.select("script:not([src])").joinToString("\n") { it.data() }
+        Regex("""currentUrl\s*=\s*"([^"]+)"""").find(allScripts)?.groupValues?.get(1)?.replace("\\/", "/")?.let {
+            addHoster(it)
+        }
         val embedRegex = Regex("""https?://[a-zA-Z0-9.-]+/(?:embed|e|v)/[a-zA-Z0-9_-]+(?:\.html)?""")
         embedRegex.findAll(allScripts).forEach { match ->
-            val u = match.value
-            if (seenUrls.add(u)) {
-                hosters.add(Hoster(hosterUrl = u, hosterName = guessHosterName(u)))
-            }
+            addHoster(match.value)
         }
+    }
 
-        val prefHoster = preferences.getString(PREF_HOSTER_KEY, PREF_HOSTER_DEFAULT) ?: PREF_HOSTER_DEFAULT
-        return hosters.sortedByDescending { it.hosterName.contains(prefHoster, ignoreCase = true) }
+    private fun sortHosters(hosters: List<Hoster>, prefVoice: String, prefHoster: String): List<Hoster> {
+        fun score(hoster: Hoster): Int {
+            var s = 0
+            val isPrefHoster = hoster.hosterName.contains(prefHoster, ignoreCase = true)
+            val isVf = hoster.hosterName.contains("(VF)")
+            val isVostfr = hoster.hosterName.contains("(VOSTFR)")
+
+            if (isPrefHoster) s += 10
+            when (prefVoice) {
+                "vf" -> if (isVf) s += 20 else if (isVostfr) s += 5
+                "vostfr" -> if (isVostfr) s += 20 else if (isVf) s += 5
+                else -> if (isVostfr) s += 2 else if (isVf) s += 1
+            }
+            return s
+        }
+        return hosters.sortedByDescending { score(it) }
     }
 
     override suspend fun getVideoList(hoster: Hoster): List<Video> {
         return try {
             val extractor = extractorList.firstOrNull {
-                it.name.equals(hoster.hosterName, ignoreCase = true) || it.supportsUrl(hoster.hosterUrl)
+                it.supportsUrl(hoster.hosterUrl) || hoster.hosterName.contains(it.name, ignoreCase = true)
             }
             extractor?.videosFromHoster(hoster)?.map {
                 it.copy(preferred = isPreferred(hoster, it))
