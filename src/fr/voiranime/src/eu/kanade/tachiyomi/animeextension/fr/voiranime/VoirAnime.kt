@@ -26,12 +26,10 @@ import eu.kanade.tachiyomi.lib.voeextractor.VoeExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parallelMap
 import extensionsfr.utils.AnimeDomainSource
 import extensionsfr.utils.Extractor
 import extensionsfr.utils.LazyMutable
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -206,29 +204,24 @@ class VoirAnime : AnimeDomainSource() {
         // 2. Series with seasons
         val prefVoice = preferences.getString(PREF_VOICES_KEY, PREF_VOICES_DEFAULT) ?: PREF_VOICES_DEFAULT
         if (seasonsGrid.isNotEmpty()) {
-            val seasonsEpisodes = coroutineScope {
-                seasonsGrid.map { seasonEl ->
-                    async {
-                        val seasonHref = seasonEl.attr("href").trim()
-                        val seasonTitle = seasonEl.selectFirst(".season-title")?.text()?.trim()
-                            ?: seasonEl.attr("title").trim()
-                        val sUrl = if (seasonHref.startsWith("http")) seasonHref else "$baseUrl$seasonHref"
-                        fetchSeasonEpisodes(sUrl, seasonTitle, prefVoice)
-                    }
-                }.awaitAll().flatten()
-            }
+            val seasonsEpisodes = seasonsGrid.parallelMap { seasonEl ->
+                val seasonHref = seasonEl.attr("href").trim()
+                val seasonTitle = seasonEl.selectFirst(".season-title")?.text()?.trim()
+                    ?: seasonEl.attr("title").trim()
+                val sUrl = if (seasonHref.startsWith("http")) seasonHref else "$baseUrl$seasonHref"
+                fetchSeasonEpisodes(sUrl, seasonTitle, prefVoice)
+            }.flatten()
             episodeList.addAll(seasonsEpisodes)
         } else {
-            // Direct episode cards on page if no seasons grid
             episodeList.addAll(parseEpisodesFromDoc(doc, "Saison 1", prefVoice))
         }
 
         return episodeList.sortedBy { it.episode_number }
     }
 
-    private suspend fun fetchSeasonEpisodes(seasonUrl: String, seasonTitle: String, prefVoice: String): List<SEpisode> {
+    private fun fetchSeasonEpisodes(seasonUrl: String, seasonTitle: String, prefVoice: String): List<SEpisode> {
         return try {
-            val response = client.newCall(GET(seasonUrl, headers)).await()
+            val response = client.newCall(GET(seasonUrl, headers)).execute()
             val doc = response.asJsoup()
             parseEpisodesFromDoc(doc, seasonTitle, prefVoice)
         } catch (_: Exception) {
@@ -333,27 +326,55 @@ class VoirAnime : AnimeDomainSource() {
         return episodes
     }
 
-    override fun episodeListParse(response: Response): List<SEpisode> = throw UnsupportedOperationException("Not used")
+    override fun episodeListParse(response: Response): List<SEpisode> = throw UnsupportedOperationException()
 
     // ============================ Video Links =============================
 
-    private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
-    private val filemoonExtractor by lazy { FilemoonExtractor(client) }
-    private val doodExtractor by lazy { DoodExtractor(client) }
-
-    override val extractorList: List<Extractor> by lazy {
-        listOf(
-            VidMolyExtractor(client),
-            VoeExtractor(client, headers),
-            SmoothpreExtractor(client),
-            VidHideExtractor(client, headers),
-            UqloadExtractor(client),
-            SendvidExtractor(client, headers),
-            SibnetExtractor(client),
-            VidzyExtractor(client),
-            UpstreamExtractor(client),
-        )
+    private class FilemoonWrapper(private val client: OkHttpClient) : Extractor() {
+        override val name = "Filemoon"
+        override val supportedUrls = listOf("filemoon.sx", "filemoon.to", "filemoon.nl", "mxzhxco8dft.com", "kokoflix.lol", "trakx.lol")
+        private val extractor by lazy { FilemoonExtractor(client) }
+        override fun videosFromHoster(hoster: Hoster): List<Video> {
+            return extractor.videosFromUrl(hoster.hosterUrl, "${hoster.hosterName} - ")
+        }
     }
+
+    private class StreamWishWrapper(private val client: OkHttpClient, private val headers: Headers) : Extractor() {
+        override val name = "StreamWish"
+        override val supportedUrls = listOf("streamwish", "wishembed", "mwish", "strwish", "awish", "sugarswish")
+        private val extractor by lazy { StreamWishExtractor(client, headers) }
+        override fun videosFromHoster(hoster: Hoster): List<Video> {
+            return extractor.videosFromUrl(hoster.hosterUrl, "${hoster.hosterName} - ")
+        }
+    }
+
+    private class DoodWrapper(private val client: OkHttpClient) : Extractor() {
+        override val name = "Doodstream"
+        override val supportedUrls = listOf("dood.to", "dood.so", "dood.la", "dood.ws", "doodstream.com", "doods.pro", "ds2play.com", "d0o0d.com", "do0od.com", "playmogo.com")
+        private val extractor by lazy { DoodExtractor(client) }
+        override fun videosFromHoster(hoster: Hoster): List<Video> {
+            return extractor.videoFromUrl(hoster.hosterUrl, hoster.hosterName)?.let { listOf(it) } ?: emptyList()
+        }
+    }
+
+    override val extractorList: List<Extractor> = listOf(
+        VidMolyExtractor(client),
+        VoeExtractor(client, headers),
+        SmoothpreExtractor(client),
+        VidHideExtractor(client, headers),
+        UqloadExtractor(client),
+        SendvidExtractor(client, headers),
+        SibnetExtractor(client),
+        VidzyExtractor(client),
+        UpstreamExtractor(client),
+        DoodWrapper(client),
+        StreamWishWrapper(client, headers),
+        FilemoonWrapper(client),
+    )
+
+    override fun seasonListParse(response: Response): List<SAnime> = throw UnsupportedOperationException()
+
+    override fun hosterListParse(response: Response): List<Hoster> = throw UnsupportedOperationException()
 
     override suspend fun getHosterList(episode: SEpisode): List<Hoster> {
         val cleanUrl = episode.url.substringBefore('#')
@@ -428,41 +449,15 @@ class VoirAnime : AnimeDomainSource() {
     }
 
     override suspend fun getVideoList(hoster: Hoster): List<Video> {
-        val url = hoster.hosterUrl
         return try {
-            val extractor = extractorList.firstOrNull { it.supportsUrl(url) || it.name.equals(hoster.hosterName, ignoreCase = true) }
-            if (extractor != null) {
-                val videos = extractor.videosFromHoster(hoster)
-                if (videos.isNotEmpty()) {
-                    return videos.map { it.copy(preferred = isPreferred(hoster, it)) }
-                }
+            val extractor = extractorList.firstOrNull {
+                it.name.equals(hoster.hosterName, ignoreCase = true) || it.supportsUrl(hoster.hosterUrl)
             }
-
-            when {
-                "streamwish" in url.lowercase() || "wishembed" in url.lowercase() || "strwish" in url.lowercase() -> {
-                    streamWishExtractor.videosFromUrl(url).map { it.copy(preferred = isPreferred(hoster, it)) }
-                }
-                "filemoon" in url.lowercase() || "grandline" in url.lowercase() -> {
-                    filemoonExtractor.videosFromUrl(url).map { it.copy(preferred = isPreferred(hoster, it)) }
-                }
-                "dood" in url.lowercase() || "playmogo" in url.lowercase() -> {
-                    doodExtractor.videoFromUrl(url)?.let { listOf(it.copy(preferred = isPreferred(hoster, it))) } ?: emptyList()
-                }
-                else -> emptyList()
-            }
+            extractor?.videosFromHoster(hoster)?.map {
+                it.copy(preferred = isPreferred(hoster, it))
+            } ?: emptyList()
         } catch (_: Throwable) {
             emptyList()
-        }
-    }
-
-    override suspend fun getVideoList(episode: SEpisode): List<Video> {
-        val hosters = getHosterList(episode)
-        return hosters.flatMap { hoster ->
-            try {
-                getVideoList(hoster)
-            } catch (_: Exception) {
-                emptyList()
-            }
         }
     }
 
@@ -555,11 +550,9 @@ class VoirAnime : AnimeDomainSource() {
     private open class UriPartFilter(
         displayName: String,
         private val vals: Array<Pair<String, String>>,
-        defaultValue: Int = 0,
     ) : AnimeFilter.Select<String>(
         displayName,
         vals.map { it.first }.toTypedArray(),
-        defaultValue,
     ) {
         fun toUriPart() = vals[state].second
     }
