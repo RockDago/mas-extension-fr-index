@@ -463,7 +463,7 @@ class VoirAnime : AnimeDomainSource() {
 
     override fun isPreferred(hoster: Hoster, video: Video): Boolean {
         val pref = preferences.getString(PREF_HOSTER_KEY, PREF_HOSTER_DEFAULT) ?: PREF_HOSTER_DEFAULT
-        return hoster.hosterName.contains(pref, ignoreCase = true) || video.quality.contains(pref, ignoreCase = true)
+        return hoster.hosterName.contains(pref, ignoreCase = true) || video.videoTitle.contains(pref, ignoreCase = true)
     }
 
     private fun guessHosterName(url: String, fallback: String = ""): String {
